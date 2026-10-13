@@ -5,7 +5,9 @@ import '../../core/db/isar_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../settings/models/app_settings.dart';
 import '../settings/providers/app_settings_provider.dart';
+import '../sync/models/badge_user.dart';
 import '../sync/models/category.dart';
+import '../sync/models/course.dart';
 import '../sync/models/user.dart';
 
 class DbSettingsView extends ConsumerStatefulWidget {
@@ -18,10 +20,14 @@ class DbSettingsView extends ConsumerStatefulWidget {
 class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   int _usersCount = 0;
   int _categoriesCount = 0;
+  int _coursesCount = 0;
+  int _badgesUsersCount = 0;
   int _settingsCount = 0;
   bool _isLoading = false;
   StreamSubscription<void>? _usersSub;
   StreamSubscription<void>? _categoriesSub;
+  StreamSubscription<void>? _coursesSub;
+  StreamSubscription<void>? _badgesUsersSub;
   StreamSubscription<void>? _settingsSub;
 
   @override
@@ -35,6 +41,12 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _categoriesSub = isar.categories.watchLazy().listen((_) {
       _refreshCounts();
     });
+    _coursesSub = isar.courses.watchLazy().listen((_) {
+      _refreshCounts();
+    });
+    _badgesUsersSub = isar.badgeUsers.watchLazy().listen((_) {
+      _refreshCounts();
+    });
     _settingsSub = isar.appSettings.watchLazy().listen((_) {
       _refreshCounts();
     });
@@ -44,6 +56,8 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   void dispose() {
     _usersSub?.cancel();
     _categoriesSub?.cancel();
+    _coursesSub?.cancel();
+    _badgesUsersSub?.cancel();
     _settingsSub?.cancel();
     super.dispose();
   }
@@ -52,11 +66,15 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     final isar = ref.read(isarProvider);
     final users = await isar.users.count();
     final categories = await isar.categories.count();
+    final courses = await isar.courses.count();
+    final badgesUsers = await isar.badgeUsers.count();
     final settings = await isar.appSettings.count();
     if (mounted) {
       setState(() {
         _usersCount = users;
         _categoriesCount = categories;
+        _coursesCount = courses;
+        _badgesUsersCount = badgesUsers;
         _settingsCount = settings;
       });
     }
@@ -108,6 +126,52 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     }
   }
 
+  Future<void> _clearCoursesTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Courses?',
+      content: 'Tutti i corsi memorizzati nel database locale verranno eliminati permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.courses.clear();
+      });
+      await ref.read(appSettingsProvider.notifier).updateCoursesSyncDate(DateTime.fromMillisecondsSinceEpoch(0));
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Courses svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _clearBadgesUsersTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Badges Users?',
+      content: 'Tutti i record dei badge utenti memorizzati nel database locale verranno eliminati permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.badgeUsers.clear();
+      });
+      await ref.read(appSettingsProvider.notifier).updateBadgesUsersSyncDate(DateTime.fromMillisecondsSinceEpoch(0));
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Badges Users svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _clearSettingsTable() async {
     final confirmed = await _showConfirmDialog(
       title: 'Resettare impostazioni applicative?',
@@ -147,6 +211,8 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
       await isar.writeTxn(() async {
         await isar.users.clear();
         await isar.categories.clear();
+        await isar.courses.clear();
+        await isar.badgeUsers.clear();
         await isar.appSettings.clear();
         await isar.appSettings.put(AppSettings());
       });
@@ -227,7 +293,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     // Riascolta eventuali cambi in AppSettings (es. reset o sync completati)
     ref.listen(appSettingsProvider, (_, __) => _refreshCounts());
 
-    final totalRecords = _usersCount + _categoriesCount + _settingsCount;
+    final totalRecords = _usersCount + _categoriesCount + _coursesCount + _badgesUsersCount + _settingsCount;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -341,6 +407,34 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
           actionColor: Colors.red.shade700,
           actionBorderColor: Colors.red.shade200,
           onAction: _clearCategoriesTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.school_outlined,
+          iconColor: const Color(0xFF0D9488),
+          name: 'Courses',
+          schema: 'CourseSchema',
+          count: _coursesCount,
+          description: 'Corsi formativi, moduli didattici, impostazioni di tracciamento e campi personalizzati',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearCoursesTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.military_tech_outlined,
+          iconColor: const Color(0xFFE11D48),
+          name: 'Badges Users',
+          schema: 'BadgeUserSchema',
+          count: _badgesUsersCount,
+          description: 'Assegnazioni badge e certificazioni agli utenti con codice, data di rilascio ed email',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearBadgesUsersTable,
         ),
         const SizedBox(height: 12),
         _buildTableListItem(

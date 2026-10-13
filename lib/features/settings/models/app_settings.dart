@@ -32,4 +32,6 @@ class AppSettings {
   // Sincronizzazione Dati
   DateTime? lastUsersSyncDate;
   DateTime? lastCategoriesSyncDate;
+  DateTime? lastCoursesSyncDate;
+  DateTime? lastBadgesUsersSyncDate;
 }

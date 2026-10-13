@@ -52,53 +52,63 @@ const AppSettingsSchema = CollectionSchema(
       name: r'customProxyUrl',
       type: IsarType.string,
     ),
-    r'lastCategoriesSyncDate': PropertySchema(
+    r'lastBadgesUsersSyncDate': PropertySchema(
       id: 7,
+      name: r'lastBadgesUsersSyncDate',
+      type: IsarType.dateTime,
+    ),
+    r'lastCategoriesSyncDate': PropertySchema(
+      id: 8,
       name: r'lastCategoriesSyncDate',
       type: IsarType.dateTime,
     ),
+    r'lastCoursesSyncDate': PropertySchema(
+      id: 9,
+      name: r'lastCoursesSyncDate',
+      type: IsarType.dateTime,
+    ),
     r'lastSyncTime': PropertySchema(
-      id: 8,
+      id: 10,
       name: r'lastSyncTime',
       type: IsarType.dateTime,
     ),
     r'lastUsersSyncDate': PropertySchema(
-      id: 9,
+      id: 11,
       name: r'lastUsersSyncDate',
       type: IsarType.dateTime,
     ),
     r'proxyAutoConfig': PropertySchema(
-      id: 10,
+      id: 12,
       name: r'proxyAutoConfig',
       type: IsarType.bool,
     ),
     r'proxyEnabled': PropertySchema(
-      id: 11,
+      id: 13,
       name: r'proxyEnabled',
       type: IsarType.bool,
     ),
     r'proxyPassword': PropertySchema(
-      id: 12,
+      id: 14,
       name: r'proxyPassword',
       type: IsarType.string,
     ),
     r'proxyUsername': PropertySchema(
-      id: 13,
+      id: 15,
       name: r'proxyUsername',
       type: IsarType.string,
     ),
     r'sharepointDocumentLibrary': PropertySchema(
-      id: 14,
+      id: 16,
       name: r'sharepointDocumentLibrary',
       type: IsarType.string,
     ),
     r'sharepointSiteName': PropertySchema(
-      id: 15,
+      id: 17,
       name: r'sharepointSiteName',
       type: IsarType.string,
     ),
     r'syncOnStartup': PropertySchema(
-      id: 16,
+      id: 18,
       name: r'syncOnStartup',
       type: IsarType.bool,
     )
@@ -149,16 +159,18 @@ void _appSettingsSerialize(
   writer.writeString(offsets[4], object.appName);
   writer.writeBool(offsets[5], object.bypassSslVerification);
   writer.writeString(offsets[6], object.customProxyUrl);
-  writer.writeDateTime(offsets[7], object.lastCategoriesSyncDate);
-  writer.writeDateTime(offsets[8], object.lastSyncTime);
-  writer.writeDateTime(offsets[9], object.lastUsersSyncDate);
-  writer.writeBool(offsets[10], object.proxyAutoConfig);
-  writer.writeBool(offsets[11], object.proxyEnabled);
-  writer.writeString(offsets[12], object.proxyPassword);
-  writer.writeString(offsets[13], object.proxyUsername);
-  writer.writeString(offsets[14], object.sharepointDocumentLibrary);
-  writer.writeString(offsets[15], object.sharepointSiteName);
-  writer.writeBool(offsets[16], object.syncOnStartup);
+  writer.writeDateTime(offsets[7], object.lastBadgesUsersSyncDate);
+  writer.writeDateTime(offsets[8], object.lastCategoriesSyncDate);
+  writer.writeDateTime(offsets[9], object.lastCoursesSyncDate);
+  writer.writeDateTime(offsets[10], object.lastSyncTime);
+  writer.writeDateTime(offsets[11], object.lastUsersSyncDate);
+  writer.writeBool(offsets[12], object.proxyAutoConfig);
+  writer.writeBool(offsets[13], object.proxyEnabled);
+  writer.writeString(offsets[14], object.proxyPassword);
+  writer.writeString(offsets[15], object.proxyUsername);
+  writer.writeString(offsets[16], object.sharepointDocumentLibrary);
+  writer.writeString(offsets[17], object.sharepointSiteName);
+  writer.writeBool(offsets[18], object.syncOnStartup);
 }
 
 AppSettings _appSettingsDeserialize(
@@ -176,16 +188,18 @@ AppSettings _appSettingsDeserialize(
   object.bypassSslVerification = reader.readBool(offsets[5]);
   object.customProxyUrl = reader.readString(offsets[6]);
   object.id = id;
-  object.lastCategoriesSyncDate = reader.readDateTimeOrNull(offsets[7]);
-  object.lastSyncTime = reader.readDateTimeOrNull(offsets[8]);
-  object.lastUsersSyncDate = reader.readDateTimeOrNull(offsets[9]);
-  object.proxyAutoConfig = reader.readBool(offsets[10]);
-  object.proxyEnabled = reader.readBool(offsets[11]);
-  object.proxyPassword = reader.readString(offsets[12]);
-  object.proxyUsername = reader.readString(offsets[13]);
-  object.sharepointDocumentLibrary = reader.readString(offsets[14]);
-  object.sharepointSiteName = reader.readString(offsets[15]);
-  object.syncOnStartup = reader.readBool(offsets[16]);
+  object.lastBadgesUsersSyncDate = reader.readDateTimeOrNull(offsets[7]);
+  object.lastCategoriesSyncDate = reader.readDateTimeOrNull(offsets[8]);
+  object.lastCoursesSyncDate = reader.readDateTimeOrNull(offsets[9]);
+  object.lastSyncTime = reader.readDateTimeOrNull(offsets[10]);
+  object.lastUsersSyncDate = reader.readDateTimeOrNull(offsets[11]);
+  object.proxyAutoConfig = reader.readBool(offsets[12]);
+  object.proxyEnabled = reader.readBool(offsets[13]);
+  object.proxyPassword = reader.readString(offsets[14]);
+  object.proxyUsername = reader.readString(offsets[15]);
+  object.sharepointDocumentLibrary = reader.readString(offsets[16]);
+  object.sharepointSiteName = reader.readString(offsets[17]);
+  object.syncOnStartup = reader.readBool(offsets[18]);
   return object;
 }
 
@@ -217,18 +231,22 @@ P _appSettingsDeserializeProp<P>(
     case 9:
       return (reader.readDateTimeOrNull(offset)) as P;
     case 10:
-      return (reader.readBool(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 11:
-      return (reader.readBool(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 12:
-      return (reader.readString(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 13:
-      return (reader.readString(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 14:
       return (reader.readString(offset)) as P;
     case 15:
       return (reader.readString(offset)) as P;
     case 16:
+      return (reader.readString(offset)) as P;
+    case 17:
+      return (reader.readString(offset)) as P;
+    case 18:
       return (reader.readBool(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1206,6 +1224,80 @@ extension AppSettingsQueryFilter
   }
 
   QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastBadgesUsersSyncDateIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'lastBadgesUsersSyncDate',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastBadgesUsersSyncDateIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'lastBadgesUsersSyncDate',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastBadgesUsersSyncDateEqualTo(DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastBadgesUsersSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastBadgesUsersSyncDateGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastBadgesUsersSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastBadgesUsersSyncDateLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastBadgesUsersSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastBadgesUsersSyncDateBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastBadgesUsersSyncDate',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
       lastCategoriesSyncDateIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -1271,6 +1363,80 @@ extension AppSettingsQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
         property: r'lastCategoriesSyncDate',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCoursesSyncDateIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'lastCoursesSyncDate',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCoursesSyncDateIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'lastCoursesSyncDate',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCoursesSyncDateEqualTo(DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastCoursesSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCoursesSyncDateGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastCoursesSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCoursesSyncDateLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastCoursesSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCoursesSyncDateBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastCoursesSyncDate',
         lower: lower,
         includeLower: includeLower,
         upper: upper,
@@ -2101,6 +2267,20 @@ extension AppSettingsQuerySortBy
   }
 
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByLastBadgesUsersSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastBadgesUsersSyncDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByLastBadgesUsersSyncDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastBadgesUsersSyncDate', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
       sortByLastCategoriesSyncDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastCategoriesSyncDate', Sort.asc);
@@ -2111,6 +2291,20 @@ extension AppSettingsQuerySortBy
       sortByLastCategoriesSyncDateDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastCategoriesSyncDate', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByLastCoursesSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastCoursesSyncDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByLastCoursesSyncDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastCoursesSyncDate', Sort.desc);
     });
   }
 
@@ -2338,6 +2532,20 @@ extension AppSettingsQuerySortThenBy
   }
 
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByLastBadgesUsersSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastBadgesUsersSyncDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByLastBadgesUsersSyncDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastBadgesUsersSyncDate', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
       thenByLastCategoriesSyncDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastCategoriesSyncDate', Sort.asc);
@@ -2348,6 +2556,20 @@ extension AppSettingsQuerySortThenBy
       thenByLastCategoriesSyncDateDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastCategoriesSyncDate', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByLastCoursesSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastCoursesSyncDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByLastCoursesSyncDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastCoursesSyncDate', Sort.desc);
     });
   }
 
@@ -2526,9 +2748,23 @@ extension AppSettingsQueryWhereDistinct
   }
 
   QueryBuilder<AppSettings, AppSettings, QDistinct>
+      distinctByLastBadgesUsersSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'lastBadgesUsersSyncDate');
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QDistinct>
       distinctByLastCategoriesSyncDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'lastCategoriesSyncDate');
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QDistinct>
+      distinctByLastCoursesSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'lastCoursesSyncDate');
     });
   }
 
@@ -2650,9 +2886,23 @@ extension AppSettingsQueryProperty
   }
 
   QueryBuilder<AppSettings, DateTime?, QQueryOperations>
+      lastBadgesUsersSyncDateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'lastBadgesUsersSyncDate');
+    });
+  }
+
+  QueryBuilder<AppSettings, DateTime?, QQueryOperations>
       lastCategoriesSyncDateProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'lastCategoriesSyncDate');
+    });
+  }
+
+  QueryBuilder<AppSettings, DateTime?, QQueryOperations>
+      lastCoursesSyncDateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'lastCoursesSyncDate');
     });
   }
 

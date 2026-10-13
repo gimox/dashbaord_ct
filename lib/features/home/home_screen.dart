@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/proxy_service.dart';
+import '../badges/badges_list_view.dart';
 import '../categories/categories_list_view.dart';
+import '../courses/courses_list_view.dart';
 import '../database/db_settings_view.dart';
 import '../settings/settings_view.dart';
 import '../sync/sync_view.dart';
@@ -26,8 +28,12 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Home';
       case 1:
         return 'Gestione Utenti (Users)';
+      case 7:
+        return 'Gestione Corsi (Courses)';
       case 6:
         return 'Gestione Categorie';
+      case 8:
+        return 'Gestione Badges (Badge Users)';
       case 2:
         return 'Impostazioni Rete & Proxy';
       case 3:
@@ -47,8 +53,12 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Panoramica delle metriche aziendali e stato del sistema.';
       case 1:
         return 'Elenco tabellare degli utenti sincronizzati dal server API.';
+      case 7:
+        return 'Catalogo completo dei corsi, percorsi formativi e modalità di erogazione.';
       case 6:
         return 'Organizzazione dei moduli, percorsi didattici e gerarchia dei corsi nel catalogo.';
+      case 8:
+        return 'Elenco e monitoraggio dei badge e certificazioni assegnate agli utenti.';
       case 2:
         return 'Configurazione del proxy aziendale, rilevamento automatico PAC e bypass SSL.';
       case 3:
@@ -148,10 +158,24 @@ class _HomeScreenState extends State<HomeScreen> {
                       isCollapsed: collapsed,
                     ),
                     _buildNavItem(
+                      index: 7,
+                      icon: Icons.school_outlined,
+                      selectedIcon: Icons.school_rounded,
+                      title: 'Courses',
+                      isCollapsed: collapsed,
+                    ),
+                    _buildNavItem(
                       index: 6,
                       icon: Icons.category_outlined,
                       selectedIcon: Icons.category_rounded,
                       title: 'Categories',
+                      isCollapsed: collapsed,
+                    ),
+                    _buildNavItem(
+                      index: 8,
+                      icon: Icons.military_tech_outlined,
+                      selectedIcon: Icons.military_tech_rounded,
+                      title: 'Badges',
                       isCollapsed: collapsed,
                     ),
 
@@ -256,6 +280,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+            ),
+          ),
 
               // CONTENUTO PRINCIPALE
               Expanded(
@@ -329,6 +355,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SyncSettingsView(),
                           const DbSettingsView(),
                           const CategoriesListView(),
+                          const CoursesListView(),
+                          const BadgesListView(),
                         ],
                       ),
                     ),

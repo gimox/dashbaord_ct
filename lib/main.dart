@@ -12,7 +12,9 @@ import 'core/services/proxy_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/settings/models/app_settings.dart';
 import 'features/settings/providers/app_settings_provider.dart';
+import 'features/sync/models/badge_user.dart';
 import 'features/sync/models/category.dart';
+import 'features/sync/models/course.dart';
 import 'features/sync/models/user.dart';
 
 void main() async {
@@ -48,7 +50,7 @@ void main() async {
   }
 
   final isar = await Isar.open(
-    [AppSettingsSchema, UserSchema, CategorySchema],
+    [AppSettingsSchema, UserSchema, CategorySchema, CourseSchema, BadgeUserSchema],
     directory: dirPath ?? '',
     inspector: !kIsWeb,
   );
@@ -67,6 +69,22 @@ void main() async {
   } catch (e) {
     debugPrint('[Isar] Disallineamento schema Category: $e. Pulizia tabella categorie.');
     await isar.writeTxn(() async => await isar.categories.clear());
+  }
+
+  // Verifica difensiva su CourseSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.courses.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema Course: $e. Pulizia tabella corsi.');
+    await isar.writeTxn(() async => await isar.courses.clear());
+  }
+
+  // Verifica difensiva su BadgeUserSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.badgeUsers.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema BadgeUser: $e. Pulizia tabella badges_users.');
+    await isar.writeTxn(() async => await isar.badgeUsers.clear());
   }
 
   // 3. Inizializzazione Proxy Service con le impostazioni persistite

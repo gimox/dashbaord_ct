@@ -7,7 +7,9 @@ import 'package:universal_io/universal_io.dart';
 import '../../core/db/isar_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../settings/providers/app_settings_provider.dart';
+import 'models/badge_user.dart';
 import 'models/category.dart';
+import 'models/course.dart';
 import 'models/user.dart';
 
 class SyncSettingsView extends ConsumerStatefulWidget {
@@ -30,6 +32,18 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   String? _categoriesSyncSuccessMessage;
   StreamSubscription<void>? _categoriesSub;
 
+  bool _isCoursesSyncing = false;
+  int _localCoursesCount = 0;
+  String? _coursesSyncErrorMessage;
+  String? _coursesSyncSuccessMessage;
+  StreamSubscription<void>? _coursesSub;
+
+  bool _isBadgesUsersSyncing = false;
+  int _localBadgesUsersCount = 0;
+  String? _badgesUsersSyncErrorMessage;
+  String? _badgesUsersSyncSuccessMessage;
+  StreamSubscription<void>? _badgesUsersSub;
+
   @override
   void initState() {
     super.initState();
@@ -41,12 +55,20 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     _categoriesSub = isar.categories.watchLazy().listen((_) {
       _refreshLocalCount();
     });
+    _coursesSub = isar.courses.watchLazy().listen((_) {
+      _refreshLocalCount();
+    });
+    _badgesUsersSub = isar.badgeUsers.watchLazy().listen((_) {
+      _refreshLocalCount();
+    });
   }
 
   @override
   void dispose() {
     _usersSub?.cancel();
     _categoriesSub?.cancel();
+    _coursesSub?.cancel();
+    _badgesUsersSub?.cancel();
     super.dispose();
   }
 
@@ -54,10 +76,14 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     final isar = ref.read(isarProvider);
     final count = await isar.users.count();
     final catCount = await isar.categories.count();
+    final courseCount = await isar.courses.count();
+    final badgesUsersCount = await isar.badgeUsers.count();
     if (mounted) {
       setState(() {
         _localUsersCount = count;
         _localCategoriesCount = catCount;
+        _localCoursesCount = courseCount;
+        _localBadgesUsersCount = badgesUsersCount;
       });
     }
   }
@@ -73,9 +99,17 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             settings.lastCategoriesSyncDate!.millisecondsSinceEpoch > 0
         ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastCategoriesSyncDate!)
         : 'Mai eseguito';
+    final lastCoursesSyncText = settings.lastCoursesSyncDate != null &&
+            settings.lastCoursesSyncDate!.millisecondsSinceEpoch > 0
+        ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastCoursesSyncDate!)
+        : 'Mai eseguito';
+    final lastBadgesUsersSyncText = settings.lastBadgesUsersSyncDate != null &&
+            settings.lastBadgesUsersSyncDate!.millisecondsSinceEpoch > 0
+        ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastBadgesUsersSyncDate!)
+        : 'Mai eseguito';
 
-    final totalRecords = _localUsersCount + _localCategoriesCount;
-    final isAnySyncing = _isSyncing || _isCategoriesSyncing;
+    final totalRecords = _localUsersCount + _localCategoriesCount + _localCoursesCount + _localBadgesUsersCount;
+    final isAnySyncing = _isSyncing || _isCategoriesSyncing || _isCoursesSyncing || _isBadgesUsersSyncing;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -122,7 +156,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '2 collezioni API collegate • $totalRecords record totali in locale',
+                                '4 collezioni API collegate • $totalRecords record totali in locale',
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -188,6 +222,36 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   onSync: _syncCategories,
                   errorMessage: _categoriesSyncErrorMessage,
                   successMessage: _categoriesSyncSuccessMessage,
+                ),
+                const SizedBox(height: 14),
+
+                _buildSyncListItem(
+                  icon: Icons.school_outlined,
+                  iconColor: const Color(0xFF0D9488),
+                  title: 'Corsi (Courses)',
+                  endpoint: '/courses',
+                  description: 'Scarica i corsi con moduli didattici, opzioni formato, tracciamento e custom fields.',
+                  lastSyncText: lastCoursesSyncText,
+                  localCountText: '$_localCoursesCount corsi',
+                  isSyncing: _isCoursesSyncing,
+                  onSync: _syncCourses,
+                  errorMessage: _coursesSyncErrorMessage,
+                  successMessage: _coursesSyncSuccessMessage,
+                ),
+                const SizedBox(height: 14),
+
+                _buildSyncListItem(
+                  icon: Icons.military_tech_outlined,
+                  iconColor: const Color(0xFFE11D48),
+                  title: 'Badges Utenti (Badges Users)',
+                  endpoint: '/badges_users',
+                  description: 'Scarica i badge e le certificazioni assegnate agli utenti con codice, email e data rilascio.',
+                  lastSyncText: lastBadgesUsersSyncText,
+                  localCountText: '$_localBadgesUsersCount badge assegnati',
+                  isSyncing: _isBadgesUsersSyncing,
+                  onSync: _syncBadgesUsers,
+                  errorMessage: _badgesUsersSyncErrorMessage,
+                  successMessage: _badgesUsersSyncSuccessMessage,
                 ),
               ],
             ),
@@ -426,6 +490,8 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   Future<void> _syncAll() async {
     await _syncUsers();
     await _syncCategories();
+    await _syncCourses();
+    await _syncBadgesUsers();
   }
 
   Future<void> _syncUsers() async {
@@ -674,6 +740,258 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     } finally {
       if (mounted) {
         setState(() => _isCategoriesSyncing = false);
+      }
+    }
+  }
+
+  Future<void> _syncCourses() async {
+    final settings = ref.read(appSettingsProvider);
+    final baseUrl = settings.apiBaseUrl.trim();
+    final username = settings.apiUsername.trim();
+    final password = settings.apiPassword;
+
+    if (baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Configura prima il Base URL nel menu Impostazioni -> API SERVER.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isCoursesSyncing = true;
+      _coursesSyncErrorMessage = null;
+      _coursesSyncSuccessMessage = null;
+    });
+
+    try {
+      String fullUrl = baseUrl;
+      if (!fullUrl.endsWith('/')) {
+        fullUrl += '/courses';
+      } else {
+        fullUrl += 'courses';
+      }
+
+      final uri = Uri.parse(fullUrl);
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 30);
+
+      if (settings.bypassSslVerification) {
+        client.badCertificateCallback = (cert, host, port) => true;
+      }
+
+      final request = await client.getUrl(uri);
+
+      if (username.isNotEmpty || password.isNotEmpty) {
+        final credentials = base64Encode(utf8.encode('$username:$password'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Basic $credentials');
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(responseBody);
+        List<dynamic> coursesJsonList = [];
+
+        if (decoded is List) {
+          coursesJsonList = decoded;
+        } else if (decoded is Map) {
+          final map = Map<String, dynamic>.from(decoded);
+          if (map.containsKey('shortname') || map.containsKey('fullname')) {
+            coursesJsonList = [map];
+          } else if (map['courses'] is List) {
+            coursesJsonList = map['courses'] as List;
+          } else if (map['data'] is List) {
+            coursesJsonList = map['data'] as List;
+          } else if (map['elements'] is List) {
+            coursesJsonList = map['elements'] as List;
+          } else if (map['records'] is List) {
+            coursesJsonList = map['records'] as List;
+          } else if (map['results'] is List) {
+            coursesJsonList = map['results'] as List;
+          } else {
+            for (final v in map.values) {
+              if (v is List && v.isNotEmpty && v.first is Map) {
+                coursesJsonList = v;
+                break;
+              }
+            }
+          }
+        }
+
+        final List<Course> coursesList = [];
+        for (final item in coursesJsonList) {
+          if (item is Map) {
+            try {
+              coursesList.add(Course.fromJson(Map<String, dynamic>.from(item)));
+            } catch (e) {
+              debugPrint('[Sync Courses] Errore parsing item: $e');
+            }
+          }
+        }
+
+        if (coursesList.isEmpty) {
+          setState(() {
+            _coursesSyncErrorMessage = 'Nessun corso valido estratto dalla risposta del server.\n'
+                'Risposta ricevuta: ${responseBody.length > 250 ? '${responseBody.substring(0, 250)}...' : responseBody}';
+          });
+          return;
+        }
+
+        final isar = ref.read(isarProvider);
+        await isar.writeTxn(() async {
+          await isar.courses.putAll(coursesList);
+        });
+
+        final now = DateTime.now();
+        await ref.read(appSettingsProvider.notifier).updateCoursesSyncDate(now);
+        await _refreshLocalCount();
+
+        setState(() {
+          _coursesSyncSuccessMessage = 'Sincronizzazione completata con successo: ${coursesList.length} corsi salvati nel database!';
+        });
+      } else {
+        setState(() {
+          _coursesSyncErrorMessage = 'Risposta HTTP ${response.statusCode}: $responseBody';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _coursesSyncErrorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isCoursesSyncing = false);
+      }
+    }
+  }
+
+  Future<void> _syncBadgesUsers() async {
+    final settings = ref.read(appSettingsProvider);
+    final baseUrl = settings.apiBaseUrl.trim();
+    final username = settings.apiUsername.trim();
+    final password = settings.apiPassword;
+
+    if (baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Configura prima il Base URL nel menu Impostazioni -> API SERVER.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isBadgesUsersSyncing = true;
+      _badgesUsersSyncErrorMessage = null;
+      _badgesUsersSyncSuccessMessage = null;
+    });
+
+    try {
+      var fullUrl = baseUrl;
+      if (!fullUrl.endsWith('/')) {
+        fullUrl += '/badges_users';
+      } else {
+        fullUrl += 'badges_users';
+      }
+
+      final uri = Uri.parse(fullUrl);
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 30);
+
+      if (settings.bypassSslVerification) {
+        client.badCertificateCallback = (cert, host, port) => true;
+      }
+
+      final request = await client.getUrl(uri);
+
+      if (username.isNotEmpty || password.isNotEmpty) {
+        final credentials = base64Encode(utf8.encode('$username:$password'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Basic $credentials');
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(responseBody);
+        List<dynamic> badgesJsonList = [];
+
+        if (decoded is List) {
+          badgesJsonList = decoded;
+        } else if (decoded is Map) {
+          final map = Map<String, dynamic>.from(decoded);
+          if (map.containsKey('badge') || map.containsKey('code')) {
+            badgesJsonList = [map];
+          } else if (map['badges_users'] is List) {
+            badgesJsonList = map['badges_users'] as List;
+          } else if (map['badges'] is List) {
+            badgesJsonList = map['badges'] as List;
+          } else if (map['data'] is List) {
+            badgesJsonList = map['data'] as List;
+          } else if (map['elements'] is List) {
+            badgesJsonList = map['elements'] as List;
+          } else if (map['records'] is List) {
+            badgesJsonList = map['records'] as List;
+          } else if (map['results'] is List) {
+            badgesJsonList = map['results'] as List;
+          } else {
+            for (final v in map.values) {
+              if (v is List && v.isNotEmpty && v.first is Map) {
+                badgesJsonList = v;
+                break;
+              }
+            }
+          }
+        }
+
+        final List<BadgeUser> badgesList = [];
+        for (final item in badgesJsonList) {
+          if (item is Map) {
+            try {
+              badgesList.add(BadgeUser.fromJson(Map<String, dynamic>.from(item)));
+            } catch (e) {
+              debugPrint('[Sync BadgesUsers] Errore parsing item: $e');
+            }
+          }
+        }
+
+        if (badgesList.isEmpty) {
+          setState(() {
+            _badgesUsersSyncErrorMessage = 'Nessun badge utente valido estratto dalla risposta del server.\n'
+                'Risposta ricevuta: ${responseBody.length > 250 ? '${responseBody.substring(0, 250)}...' : responseBody}';
+          });
+          return;
+        }
+
+        final isar = ref.read(isarProvider);
+        await isar.writeTxn(() async {
+          await isar.badgeUsers.putAll(badgesList);
+        });
+
+        final now = DateTime.now();
+        await ref.read(appSettingsProvider.notifier).updateBadgesUsersSyncDate(now);
+        await _refreshLocalCount();
+
+        setState(() {
+          _badgesUsersSyncSuccessMessage = 'Sincronizzazione completata con successo: ${badgesList.length} badge utenti salvati nel database!';
+        });
+      } else {
+        setState(() {
+          _badgesUsersSyncErrorMessage = 'Risposta HTTP ${response.statusCode}: $responseBody';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _badgesUsersSyncErrorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isBadgesUsersSyncing = false);
       }
     }
   }
