@@ -68,7 +68,11 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastUsersSyncDate = state.lastUsersSyncDate
       ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
       ..lastCoursesSyncDate = state.lastCoursesSyncDate
-      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate;
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -103,7 +107,11 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastUsersSyncDate = state.lastUsersSyncDate
       ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
       ..lastCoursesSyncDate = state.lastCoursesSyncDate
-      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate;
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -132,7 +140,11 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastUsersSyncDate = date
       ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
       ..lastCoursesSyncDate = state.lastCoursesSyncDate
-      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate;
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -161,7 +173,11 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastUsersSyncDate = state.lastUsersSyncDate
       ..lastCategoriesSyncDate = date
       ..lastCoursesSyncDate = state.lastCoursesSyncDate
-      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate;
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -190,7 +206,11 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastUsersSyncDate = state.lastUsersSyncDate
       ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
       ..lastCoursesSyncDate = date
-      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate;
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -219,7 +239,177 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastUsersSyncDate = state.lastUsersSyncDate
       ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
       ..lastCoursesSyncDate = state.lastCoursesSyncDate
-      ..lastBadgesUsersSyncDate = date;
+      ..lastBadgesUsersSyncDate = date
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
+
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(updated);
+    });
+
+    state = updated;
+  }
+
+  Future<void> updateCourseInfoSyncDate(DateTime date) async {
+    final updated = AppSettings()
+      ..id = 0
+      ..appName = state.appName
+      ..sharepointSiteName = state.sharepointSiteName
+      ..sharepointDocumentLibrary = state.sharepointDocumentLibrary
+      ..syncOnStartup = state.syncOnStartup
+      ..proxyEnabled = state.proxyEnabled
+      ..proxyAutoConfig = state.proxyAutoConfig
+      ..customProxyUrl = state.customProxyUrl
+      ..bypassSslVerification = state.bypassSslVerification
+      ..proxyUsername = state.proxyUsername
+      ..proxyPassword = state.proxyPassword
+      ..apiBaseUrl = state.apiBaseUrl
+      ..apiUsername = state.apiUsername
+      ..apiPassword = state.apiPassword
+      ..apiTestEndpoint = state.apiTestEndpoint
+      ..lastUsersSyncDate = state.lastUsersSyncDate
+      ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
+      ..lastCoursesSyncDate = state.lastCoursesSyncDate
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = date
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
+
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(updated);
+    });
+
+    state = updated;
+  }
+
+  Future<void> updateMergeWebexUsersSyncDate(DateTime date) async {
+    final updated = AppSettings()
+      ..id = 0
+      ..appName = state.appName
+      ..sharepointSiteName = state.sharepointSiteName
+      ..sharepointDocumentLibrary = state.sharepointDocumentLibrary
+      ..syncOnStartup = state.syncOnStartup
+      ..proxyEnabled = state.proxyEnabled
+      ..proxyAutoConfig = state.proxyAutoConfig
+      ..customProxyUrl = state.customProxyUrl
+      ..bypassSslVerification = state.bypassSslVerification
+      ..proxyUsername = state.proxyUsername
+      ..proxyPassword = state.proxyPassword
+      ..apiBaseUrl = state.apiBaseUrl
+      ..apiUsername = state.apiUsername
+      ..apiPassword = state.apiPassword
+      ..apiTestEndpoint = state.apiTestEndpoint
+      ..lastUsersSyncDate = state.lastUsersSyncDate
+      ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
+      ..lastCoursesSyncDate = state.lastCoursesSyncDate
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = date
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
+
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(updated);
+    });
+
+    state = updated;
+  }
+
+  Future<void> updateStatMdlSyncDate(DateTime date) async {
+    final updated = AppSettings()
+      ..id = 0
+      ..appName = state.appName
+      ..sharepointSiteName = state.sharepointSiteName
+      ..sharepointDocumentLibrary = state.sharepointDocumentLibrary
+      ..syncOnStartup = state.syncOnStartup
+      ..proxyEnabled = state.proxyEnabled
+      ..proxyAutoConfig = state.proxyAutoConfig
+      ..customProxyUrl = state.customProxyUrl
+      ..bypassSslVerification = state.bypassSslVerification
+      ..proxyUsername = state.proxyUsername
+      ..proxyPassword = state.proxyPassword
+      ..apiBaseUrl = state.apiBaseUrl
+      ..apiUsername = state.apiUsername
+      ..apiPassword = state.apiPassword
+      ..apiTestEndpoint = state.apiTestEndpoint
+      ..lastUsersSyncDate = state.lastUsersSyncDate
+      ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
+      ..lastCoursesSyncDate = state.lastCoursesSyncDate
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = date
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
+
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(updated);
+    });
+
+    state = updated;
+  }
+
+  Future<void> updateUserCourseEnrolledSyncDate(DateTime date) async {
+    final updated = AppSettings()
+      ..id = 0
+      ..appName = state.appName
+      ..sharepointSiteName = state.sharepointSiteName
+      ..sharepointDocumentLibrary = state.sharepointDocumentLibrary
+      ..syncOnStartup = state.syncOnStartup
+      ..proxyEnabled = state.proxyEnabled
+      ..proxyAutoConfig = state.proxyAutoConfig
+      ..customProxyUrl = state.customProxyUrl
+      ..bypassSslVerification = state.bypassSslVerification
+      ..proxyUsername = state.proxyUsername
+      ..proxyPassword = state.proxyPassword
+      ..apiBaseUrl = state.apiBaseUrl
+      ..apiUsername = state.apiUsername
+      ..apiPassword = state.apiPassword
+      ..apiTestEndpoint = state.apiTestEndpoint
+      ..lastUsersSyncDate = state.lastUsersSyncDate
+      ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
+      ..lastCoursesSyncDate = state.lastCoursesSyncDate
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = date;
+
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(updated);
+    });
+
+    state = updated;
+  }
+
+  Future<void> updateLastSyncTime(DateTime date) async {
+    final updated = AppSettings()
+      ..id = 0
+      ..appName = state.appName
+      ..lastSyncTime = date
+      ..sharepointSiteName = state.sharepointSiteName
+      ..sharepointDocumentLibrary = state.sharepointDocumentLibrary
+      ..syncOnStartup = state.syncOnStartup
+      ..proxyEnabled = state.proxyEnabled
+      ..proxyAutoConfig = state.proxyAutoConfig
+      ..customProxyUrl = state.customProxyUrl
+      ..bypassSslVerification = state.bypassSslVerification
+      ..proxyUsername = state.proxyUsername
+      ..proxyPassword = state.proxyPassword
+      ..apiBaseUrl = state.apiBaseUrl
+      ..apiUsername = state.apiUsername
+      ..apiPassword = state.apiPassword
+      ..apiTestEndpoint = state.apiTestEndpoint
+      ..lastUsersSyncDate = state.lastUsersSyncDate
+      ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
+      ..lastCoursesSyncDate = state.lastCoursesSyncDate
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -228,3 +418,4 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
     state = updated;
   }
 }
+

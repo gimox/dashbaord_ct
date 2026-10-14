@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/proxy_service.dart';
 import '../badges/badges_list_view.dart';
 import '../categories/categories_list_view.dart';
+import '../course_info/course_info_list_view.dart';
 import '../courses/courses_list_view.dart';
 import '../database/db_settings_view.dart';
+import '../enrollments/enrollments_list_view.dart';
+import '../settings/models/app_settings.dart';
+import '../settings/providers/app_settings_provider.dart';
 import '../settings/settings_view.dart';
+import '../stats/stat_mdl_list_view.dart';
+import '../stats/user_course_stats_view.dart';
+import '../sync/providers/global_sync_provider.dart';
 import '../sync/sync_view.dart';
 import '../users/users_list_view.dart';
 import 'home_dashboard_view.dart';
@@ -34,6 +43,14 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Gestione Categorie';
       case 8:
         return 'Gestione Badges (Badge Users)';
+      case 9:
+        return 'Gestione Course Info (Sezioni & Moduli)';
+      case 10:
+        return 'Statistiche (stat_mdl)';
+      case 11:
+        return 'Vista per Utente';
+      case 12:
+        return 'Gestione Iscrizioni (user_course_enrolled)';
       case 2:
         return 'Impostazioni Rete & Proxy';
       case 3:
@@ -59,6 +76,14 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Organizzazione dei moduli, percorsi didattici e gerarchia dei corsi nel catalogo.';
       case 8:
         return 'Elenco e monitoraggio dei badge e certificazioni assegnate agli utenti.';
+      case 9:
+        return 'Catalogo delle sezioni didattiche, moduli attività, risorse e impostazioni di tracciamento.';
+      case 10:
+        return 'Monitoraggio avanzamento moduli didattici, tracking SCORM e attività utenti.';
+      case 11:
+        return 'Statistiche aggregate per utente e corso con avanzamento moduli e completamenti.';
+      case 12:
+        return 'Elenco iscrizioni degli utenti ai corsi con dettagli anagrafici e del catalogo.';
       case 2:
         return 'Configurazione del proxy aziendale, rilevamento automatico PAC e bypass SSL.';
       case 3:
@@ -143,109 +168,143 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 12),
 
                     // Voci di Menu Principali
-                    _buildNavItem(
-                      index: 0,
-                      icon: Icons.home_outlined,
-                      selectedIcon: Icons.home,
-                      title: 'Home',
-                      isCollapsed: collapsed,
-                    ),
-                    _buildNavItem(
-                      index: 1,
-                      icon: Icons.people_alt_outlined,
-                      selectedIcon: Icons.people_alt,
-                      title: 'Users',
-                      isCollapsed: collapsed,
-                    ),
-                    _buildNavItem(
-                      index: 7,
-                      icon: Icons.school_outlined,
-                      selectedIcon: Icons.school_rounded,
-                      title: 'Courses',
-                      isCollapsed: collapsed,
-                    ),
-                    _buildNavItem(
-                      index: 6,
-                      icon: Icons.category_outlined,
-                      selectedIcon: Icons.category_rounded,
-                      title: 'Categories',
-                      isCollapsed: collapsed,
-                    ),
-                    _buildNavItem(
-                      index: 8,
-                      icon: Icons.military_tech_outlined,
-                      selectedIcon: Icons.military_tech_rounded,
-                      title: 'Badges',
-                      isCollapsed: collapsed,
-                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            _buildNavItem(
+                              index: 0,
+                              icon: Icons.home_outlined,
+                              selectedIcon: Icons.home,
+                              title: 'Home',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 1,
+                              icon: Icons.people_alt_outlined,
+                              selectedIcon: Icons.people_alt,
+                              title: 'Users',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 7,
+                              icon: Icons.school_outlined,
+                              selectedIcon: Icons.school_rounded,
+                              title: 'Courses',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 6,
+                              icon: Icons.category_outlined,
+                              selectedIcon: Icons.category_rounded,
+                              title: 'Categories',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 8,
+                              icon: Icons.military_tech_outlined,
+                              selectedIcon: Icons.military_tech_rounded,
+                              title: 'Badges',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 9,
+                              icon: Icons.layers_outlined,
+                              selectedIcon: Icons.layers_rounded,
+                              title: 'Course Info',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 10,
+                              icon: Icons.analytics_outlined,
+                              selectedIcon: Icons.analytics_rounded,
+                              title: 'Statistiche',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 11,
+                              icon: Icons.person_pin_outlined,
+                              selectedIcon: Icons.person_pin_rounded,
+                              title: 'Vista per utente',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 12,
+                              icon: Icons.how_to_reg_outlined,
+                              selectedIcon: Icons.how_to_reg_rounded,
+                              title: 'Iscrizioni',
+                              isCollapsed: collapsed,
+                            ),
 
-                    const SizedBox(height: 8),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    const SizedBox(height: 8),
+                            const SizedBox(height: 8),
+                            const Divider(height: 1, indent: 16, endIndent: 16),
+                            const SizedBox(height: 8),
 
-                    if (collapsed) ...[
-                      // In modalità icon-only: icone dirette per i sottomenu
-                      _buildNavItem(
-                        index: 4,
-                        icon: Icons.sync_rounded,
-                        selectedIcon: Icons.sync,
-                        title: 'Sync',
-                        isCollapsed: true,
-                      ),
-                      _buildNavItem(
-                        index: 2,
-                        icon: Icons.lan_outlined,
-                        selectedIcon: Icons.lan,
-                        title: 'Rete & Proxy',
-                        isCollapsed: true,
-                      ),
-                      _buildNavItem(
-                        index: 3,
-                        icon: Icons.api_outlined,
-                        selectedIcon: Icons.api,
-                        title: 'API SERVER',
-                        isCollapsed: true,
-                      ),
-                      _buildNavItem(
-                        index: 5,
-                        icon: Icons.dns_outlined,
-                        selectedIcon: Icons.dns_rounded,
-                        title: 'Database (DB)',
-                        isCollapsed: true,
-                      ),
-                    ] else ...[
-                      // Voce Principale: Impostazioni con Sotto-Menu
-                      _buildParentSettingsItem(),
+                            if (collapsed) ...[
+                              // In modalità icon-only: icone dirette per i sottomenu
+                              _buildNavItem(
+                                index: 4,
+                                icon: Icons.sync_rounded,
+                                selectedIcon: Icons.sync,
+                                title: 'Sync',
+                                isCollapsed: true,
+                              ),
+                              _buildNavItem(
+                                index: 2,
+                                icon: Icons.lan_outlined,
+                                selectedIcon: Icons.lan,
+                                title: 'Rete & Proxy',
+                                isCollapsed: true,
+                              ),
+                              _buildNavItem(
+                                index: 3,
+                                icon: Icons.api_outlined,
+                                selectedIcon: Icons.api,
+                                title: 'API SERVER',
+                                isCollapsed: true,
+                              ),
+                              _buildNavItem(
+                                index: 5,
+                                icon: Icons.dns_outlined,
+                                selectedIcon: Icons.dns_rounded,
+                                title: 'Database (DB)',
+                                isCollapsed: true,
+                              ),
+                            ] else ...[
+                              // Voce Principale: Impostazioni con Sotto-Menu
+                              _buildParentSettingsItem(),
 
-                      if (_isSettingsMenuExpanded) ...[
-                        _buildSubNavItem(
-                          index: 4,
-                          icon: Icons.sync_rounded,
-                          selectedIcon: Icons.sync,
-                          title: 'Sync',
+                              if (_isSettingsMenuExpanded) ...[
+                                _buildSubNavItem(
+                                  index: 4,
+                                  icon: Icons.sync_rounded,
+                                  selectedIcon: Icons.sync,
+                                  title: 'Sync',
+                                ),
+                                _buildSubNavItem(
+                                  index: 2,
+                                  icon: Icons.lan_outlined,
+                                  selectedIcon: Icons.lan,
+                                  title: 'Rete & Proxy',
+                                ),
+                                _buildSubNavItem(
+                                  index: 3,
+                                  icon: Icons.api_outlined,
+                                  selectedIcon: Icons.api,
+                                  title: 'API SERVER',
+                                ),
+                                _buildSubNavItem(
+                                  index: 5,
+                                  icon: Icons.dns_outlined,
+                                  selectedIcon: Icons.dns_rounded,
+                                  title: 'Database (DB)',
+                                ),
+                              ],
+                            ],
+                          ],
                         ),
-                        _buildSubNavItem(
-                          index: 2,
-                          icon: Icons.lan_outlined,
-                          selectedIcon: Icons.lan,
-                          title: 'Rete & Proxy',
-                        ),
-                        _buildSubNavItem(
-                          index: 3,
-                          icon: Icons.api_outlined,
-                          selectedIcon: Icons.api,
-                          title: 'API SERVER',
-                        ),
-                        _buildSubNavItem(
-                          index: 5,
-                          icon: Icons.dns_outlined,
-                          selectedIcon: Icons.dns_rounded,
-                          title: 'Database (DB)',
-                        ),
-                      ],
-                    ],
-
-                    const Spacer(),
+                      ),
+                    ),
 
                     // Stato Proxy in basso
                     if (!collapsed)
@@ -330,11 +389,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           const SizedBox(width: 16),
-                          const Chip(
-                            avatar: Icon(Icons.circle, color: Colors.green, size: 10),
-                            label: Text('Modalità Standalone Locale', style: TextStyle(fontSize: 12)),
-                            backgroundColor: Color(0xFFF5F5F5),
-                            side: BorderSide.none,
+                          HeaderSyncButton(
+                            onNavigateToApiSettings: () => setState(() => _selectedIndex = 3),
                           ),
                         ],
                       ),
@@ -348,6 +404,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           HomeDashboardView(
                             onNavigateToSync: () => setState(() => _selectedIndex = 4),
                             onNavigateToUsers: () => setState(() => _selectedIndex = 1),
+                            onNavigateToUserStats: () => setState(() => _selectedIndex = 11),
+                            onNavigateToEnrollments: () => setState(() => _selectedIndex = 12),
                           ),
                           const UsersListView(),
                           const NetworkSettingsView(),
@@ -357,6 +415,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           const CategoriesListView(),
                           const CoursesListView(),
                           const BadgesListView(),
+                          const CourseInfoListView(),
+                          const StatMdlListView(),
+                          const UserCourseStatsView(),
+                          const EnrollmentsListView(),
                         ],
                       ),
                     ),
@@ -522,6 +584,286 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class HeaderSyncButton extends ConsumerStatefulWidget {
+  final VoidCallback? onNavigateToApiSettings;
+
+  const HeaderSyncButton({
+    super.key,
+    this.onNavigateToApiSettings,
+  });
+
+  @override
+  ConsumerState<HeaderSyncButton> createState() => _HeaderSyncButtonState();
+}
+
+class _HeaderSyncButtonState extends ConsumerState<HeaderSyncButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _rotationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _rotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+  }
+
+  @override
+  void dispose() {
+    _rotationController.dispose();
+    super.dispose();
+  }
+
+  DateTime? _resolveLastSyncDate(AppSettings settings, GlobalSyncState syncState) {
+    final candidates = [
+      syncState.lastSyncTime,
+      settings.lastSyncTime,
+      settings.lastUsersSyncDate,
+      settings.lastCategoriesSyncDate,
+      settings.lastCoursesSyncDate,
+      settings.lastBadgesUsersSyncDate,
+      settings.lastCourseInfoSyncDate,
+      settings.lastMergeWebexUsersSyncDate,
+      settings.lastStatMdlSyncDate,
+      settings.lastUserCourseEnrolledSyncDate,
+    ].whereType<DateTime>().toList();
+
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) => b.compareTo(a));
+    return candidates.first;
+  }
+
+  Widget _buildButton(BuildContext context, bool isApiConfigured, GlobalSyncState syncState) {
+    if (syncState.isSyncing) {
+      return Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E3A8A),
+          borderRadius: BorderRadius.circular(9),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1E3A8A).withAlpha(40),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RotationTransition(
+              turns: _rotationController,
+              child: const Icon(Icons.sync_rounded, color: Colors.white, size: 15),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              syncState.currentOperation.isNotEmpty
+                  ? syncState.currentOperation
+                  : 'Sincronizzazione...',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                letterSpacing: 0.2,
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 13,
+              height: 13,
+              child: CircularProgressIndicator(
+                value: syncState.progress > 0 ? syncState.progress : null,
+                strokeWidth: 2,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                backgroundColor: Colors.white24,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (!isApiConfigured) {
+      return Tooltip(
+        message: 'Configura Base URL, Username e Password in Impostazioni API SERVER per abilitare la sincronizzazione.',
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onNavigateToApiSettings,
+            borderRadius: BorderRadius.circular(9),
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.sync_disabled_rounded, size: 15, color: Colors.grey.shade500),
+                  const SizedBox(width: 7),
+                  Text(
+                    'Sync disabilitato (API non configurate)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => ref.read(globalSyncProvider.notifier).syncAll(),
+        borderRadius: BorderRadius.circular(9),
+        child: Ink(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryBlue,
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.primaryBlue.withAlpha(35),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.sync_rounded, color: Colors.white, size: 15),
+              SizedBox(width: 7),
+              Text(
+                'Sincronizza Dati',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(appSettingsProvider);
+    final syncState = ref.watch(globalSyncProvider);
+
+    final isApiConfigured = settings.apiBaseUrl.trim().isNotEmpty &&
+        settings.apiUsername.trim().isNotEmpty &&
+        settings.apiPassword.trim().isNotEmpty;
+
+    if (syncState.isSyncing) {
+      if (!_rotationController.isAnimating) {
+        _rotationController.repeat();
+      }
+    } else {
+      if (_rotationController.isAnimating) {
+        _rotationController.stop();
+        _rotationController.reset();
+      }
+    }
+
+    ref.listen<GlobalSyncState>(globalSyncProvider, (previous, next) {
+      if (previous?.isSyncing == true && !next.isSyncing) {
+        if (next.errorMessage != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      next.errorMessage!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.red.shade700,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        } else if (next.successMessage != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      next.successMessage!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF16A34A),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    });
+
+    final lastSyncDate = _resolveLastSyncDate(settings, syncState);
+    final String lastSyncText = syncState.isSyncing
+        ? 'Sincronizzazione in corso...'
+        : (lastSyncDate != null
+            ? 'Ultimo sync: ${DateFormat('dd/MM/yyyy HH:mm').format(lastSyncDate)}'
+            : 'Ultimo sync: Mai eseguito');
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildButton(context, isApiConfigured, syncState),
+        const SizedBox(height: 3),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.history_rounded, size: 11, color: Colors.grey.shade500),
+            const SizedBox(width: 4),
+            Text(
+              lastSyncText,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

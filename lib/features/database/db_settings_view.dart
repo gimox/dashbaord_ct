@@ -8,7 +8,11 @@ import '../settings/providers/app_settings_provider.dart';
 import '../sync/models/badge_user.dart';
 import '../sync/models/category.dart';
 import '../sync/models/course.dart';
+import '../sync/models/course_info.dart';
+import '../sync/models/merge_webex_user.dart';
+import '../sync/models/stat_mdl.dart';
 import '../sync/models/user.dart';
+import '../sync/models/user_course_enrolled.dart';
 
 class DbSettingsView extends ConsumerStatefulWidget {
   const DbSettingsView({super.key});
@@ -22,12 +26,20 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   int _categoriesCount = 0;
   int _coursesCount = 0;
   int _badgesUsersCount = 0;
+  int _courseInfoCount = 0;
+  int _mergeWebexUsersCount = 0;
+  int _statMdlCount = 0;
+  int _userCourseEnrolledCount = 0;
   int _settingsCount = 0;
   bool _isLoading = false;
   StreamSubscription<void>? _usersSub;
   StreamSubscription<void>? _categoriesSub;
   StreamSubscription<void>? _coursesSub;
   StreamSubscription<void>? _badgesUsersSub;
+  StreamSubscription<void>? _courseInfoSub;
+  StreamSubscription<void>? _mergeWebexUsersSub;
+  StreamSubscription<void>? _statMdlSub;
+  StreamSubscription<void>? _userCourseEnrolledSub;
   StreamSubscription<void>? _settingsSub;
 
   @override
@@ -47,6 +59,18 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _badgesUsersSub = isar.badgeUsers.watchLazy().listen((_) {
       _refreshCounts();
     });
+    _courseInfoSub = isar.courseInfos.watchLazy().listen((_) {
+      _refreshCounts();
+    });
+    _mergeWebexUsersSub = isar.mergeWebexUsers.watchLazy().listen((_) {
+      _refreshCounts();
+    });
+    _statMdlSub = isar.statMdls.watchLazy().listen((_) {
+      _refreshCounts();
+    });
+    _userCourseEnrolledSub = isar.userCourseEnrolleds.watchLazy().listen((_) {
+      _refreshCounts();
+    });
     _settingsSub = isar.appSettings.watchLazy().listen((_) {
       _refreshCounts();
     });
@@ -58,6 +82,10 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _categoriesSub?.cancel();
     _coursesSub?.cancel();
     _badgesUsersSub?.cancel();
+    _courseInfoSub?.cancel();
+    _mergeWebexUsersSub?.cancel();
+    _statMdlSub?.cancel();
+    _userCourseEnrolledSub?.cancel();
     _settingsSub?.cancel();
     super.dispose();
   }
@@ -68,6 +96,10 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     final categories = await isar.categories.count();
     final courses = await isar.courses.count();
     final badgesUsers = await isar.badgeUsers.count();
+    final courseInfo = await isar.courseInfos.count();
+    final mergeWebexUsers = await isar.mergeWebexUsers.count();
+    final statMdl = await isar.statMdls.count();
+    final userCourseEnrolled = await isar.userCourseEnrolleds.count();
     final settings = await isar.appSettings.count();
     if (mounted) {
       setState(() {
@@ -75,6 +107,10 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         _categoriesCount = categories;
         _coursesCount = courses;
         _badgesUsersCount = badgesUsers;
+        _courseInfoCount = courseInfo;
+        _mergeWebexUsersCount = mergeWebexUsers;
+        _statMdlCount = statMdl;
+        _userCourseEnrolledCount = userCourseEnrolled;
         _settingsCount = settings;
       });
     }
@@ -172,6 +208,98 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     }
   }
 
+  Future<void> _clearCourseInfoTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Course Info?',
+      content: 'Tutte le informazioni su sezioni e moduli didattici memorizzate nel database locale verranno eliminate permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.courseInfos.clear();
+      });
+      await ref.read(appSettingsProvider.notifier).updateCourseInfoSyncDate(DateTime.fromMillisecondsSinceEpoch(0));
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Course Info svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _clearMergeWebexUsersTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Merge Webex Users?',
+      content: 'Tutte le sessioni Webex memorizzate nel database locale verranno eliminate permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.mergeWebexUsers.clear();
+      });
+      await ref.read(appSettingsProvider.notifier).updateMergeWebexUsersSyncDate(DateTime.fromMillisecondsSinceEpoch(0));
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Merge Webex Users svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _clearStatMdlTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Stat Moduli (stat_mdl)?',
+      content: 'Tutte le statistiche dei moduli memorizzate nel database locale verranno eliminate permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.statMdls.clear();
+      });
+      await ref.read(appSettingsProvider.notifier).updateStatMdlSyncDate(DateTime.fromMillisecondsSinceEpoch(0));
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Stat Moduli svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _clearUserCourseEnrolledTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Iscrizioni (user_course_enrolled)?',
+      content: 'Tutte le iscrizioni degli utenti ai corsi memorizzate nel database locale verranno eliminate permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.userCourseEnrolleds.clear();
+      });
+      await ref.read(appSettingsProvider.notifier).updateUserCourseEnrolledSyncDate(DateTime.fromMillisecondsSinceEpoch(0));
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Iscrizioni svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _clearSettingsTable() async {
     final confirmed = await _showConfirmDialog(
       title: 'Resettare impostazioni applicative?',
@@ -200,7 +328,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   Future<void> _clearAllTables() async {
     final confirmed = await _showConfirmDialog(
       title: 'Eseguire Reset Completo del Database?',
-      content: 'Questa operazione svuoterà TUTTE le tabelle (Users, Categories e AppSettings). Tutti i dati locali andranno persi.',
+      content: 'Questa operazione svuoterà TUTTE le tabelle (Users, Categories, Courses, Badges Users, Course Info, Merge Webex Users, Stat Moduli e AppSettings). Tutti i dati locali andranno persi.',
       isDestructive: true,
     );
     if (!confirmed) return;
@@ -213,6 +341,9 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         await isar.categories.clear();
         await isar.courses.clear();
         await isar.badgeUsers.clear();
+        await isar.courseInfos.clear();
+        await isar.mergeWebexUsers.clear();
+        await isar.statMdls.clear();
         await isar.appSettings.clear();
         await isar.appSettings.put(AppSettings());
       });
@@ -435,6 +566,62 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
           actionColor: Colors.red.shade700,
           actionBorderColor: Colors.red.shade200,
           onAction: _clearBadgesUsersTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.layers_outlined,
+          iconColor: const Color(0xFF8B5CF6),
+          name: 'Course Info',
+          schema: 'CourseInfoSchema',
+          count: _courseInfoCount,
+          description: 'Sezioni e moduli didattici di dettaglio dei corsi (forum, risorse, attività e tracciamento)',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearCourseInfoTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.video_camera_front_outlined,
+          iconColor: const Color(0xFF0284C7),
+          name: 'Merge Webex Users',
+          schema: 'MergeWebexUserSchema',
+          count: _mergeWebexUsersCount,
+          description: 'Sessioni e partecipanti Webex aggregati con corsi Moodle, metriche VoIP/video e completamento',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearMergeWebexUsersTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.analytics_outlined,
+          iconColor: const Color(0xFFD97706),
+          name: 'Stat Moduli (stat_mdl)',
+          schema: 'StatMdlSchema',
+          count: _statMdlCount,
+          description: 'Statistiche e avanzamento moduli per utente e corso (SCORM, test, accessi e completamenti)',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearStatMdlTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.how_to_reg_outlined,
+          iconColor: const Color(0xFF4F46E5),
+          name: 'Iscrizioni Utenti (user_course_enrolled)',
+          schema: 'UserCourseEnrolledSchema',
+          count: _userCourseEnrolledCount,
+          description: 'Elenco ufficiale associazioni utente-corso (course_id, user_id)',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearUserCourseEnrolledTable,
         ),
         const SizedBox(height: 12),
         _buildTableListItem(

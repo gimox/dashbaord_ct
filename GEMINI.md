@@ -57,7 +57,7 @@ Segui il file GEMINI_TEMPLATE.MD come guida per creare la struttura base di un'a
 Tutte le future schermate tabellari/entità (es. Courses, Modules, Certifications, etc.) DEVONO seguire rigorosamente l'architettura e i pattern UX stabiliti in `UsersListView`:
 
 ### A. Layout Schermata & Header
-- **Top Header:** Titolo vista grande + sottotitolo descrittivo. Nessun badge ingombrante in cima (i totali vanno nel footer).
+- **NO Titolo / Sottotitolo interno:** Titolo e sottotitolo sono già renderizzati globalmente nella TopBar principale di `HomeScreen` (`_getTitle()` e `_getSubtitle()`). La schermata della vista tabellare NON DEVE contenere titoli o sottotitoli duplicati in cima, ma iniziare direttamente con la riga di ricerca e filtri.
 - **Barra Ricerca:** `TextField` con icona search e clear integrato, espansa con `Expanded`.
 - **Pulsante Filtri Avanzati:** Con badge contatore filtri attivi; deve scomparire fluidamente (`AnimatedSize`) quando il pannello laterale è aperto per lasciare spazio alla ricerca.
 - **Chips Filtri Attivi:** Barra dinamica (`Wrap`) sotto la search bar con chip per ogni filtro attivo (con 'x' per revoca singola) e pulsante rapido "Cancella tutti" se > 1 filtro attivo.
@@ -140,7 +140,7 @@ Quando viene richiesta l'implementazione di una nuova entità (es. Courses, Modu
 ### STEP 5: Schermata Vista Tabellare (`lib/features/<feature>/<entity>_list_view.dart`)
 Replicare fedelmente la struttura di `UsersListView`:
 1. `_loadItems()` con `try-catch` difensivo su Isar e listener `isar.<entityPlural>.watchLazy()`.
-2. Header con titolo grande e sottotitolo.
+2. Nessun titolo o sottotitolo nella vista (gestiti globalmente nella TopBar di `HomeScreen`). Iniziare direttamente con la riga di ricerca e filtri.
 3. Barra di ricerca con clear integrato che filtra in tempo reale su codice, nome, descrizioni e date.
 4. Drawer laterale per filtri avanzati animato (340px ↔ 0px), con selettori a 3 stati per booleani, multi-selezione con modale per liste lunghe e date-range picker.
 5. Barra chips dei filtri attivi con rimozione rapida e pulsante "Cancella tutti".
@@ -152,3 +152,14 @@ Replicare fedelmente la struttura di `UsersListView`:
 ### STEP 6: Navigazione e Integrazione UI
 1. Aggiungere la rotta fortemente tipizzata in `lib/core/navigation/app_router.dart`.
 2. Aggiungere la voce corrispondente nella sidebar principale `lib/core/widgets/app_sidebar.dart`.
+
+
+## 7. BUSINESS LOGIC & REGOLE DI DOMINIO
+
+### Classificazione Tipo Corso (`course_type`)
+- **Regola di calcolo:** All'interno del gruppo di moduli associati a un corso (o a un utente per quel corso):
+  - **Eccezione Prioritaria Meet:** Se è presente almeno un modulo con tag `ntag` avente valore `"meet"` (case-insensitive: `ntag?.trim().toLowerCase() == 'meet'`), il corso è classificato SEMPRE come **`sync`** (Sincrono), anche in compresenza di altri valori.
+  - Altrimenti, se è presente almeno un modulo con tag `ntag` avente valore `"async"` o `"asyncp"` (case-insensitive: `['async', 'asyncp'].contains(ntag?.trim().toLowerCase())`), il corso è classificato come **`async`** (Asincrono).
+  - In tutti gli altri casi, il corso è classificato come **`sync`** (Sincrono).
+- **Proprietà del Modello:** Esporre sempre la proprietà `course_type` (alias lowerCamelCase `courseType` con getter `course_type`).
+- **Visualizzazione UI:** Mostrare la colonna dedicata `TIPO CORSO` con pill/badge colorato (Async / Sync), supporto all'ordinamento, integrazione nei filtri (ChoiceChip) e nell'esportazione Excel.

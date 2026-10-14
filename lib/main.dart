@@ -15,7 +15,11 @@ import 'features/settings/providers/app_settings_provider.dart';
 import 'features/sync/models/badge_user.dart';
 import 'features/sync/models/category.dart';
 import 'features/sync/models/course.dart';
+import 'features/sync/models/course_info.dart';
+import 'features/sync/models/merge_webex_user.dart';
+import 'features/sync/models/stat_mdl.dart';
 import 'features/sync/models/user.dart';
+import 'features/sync/models/user_course_enrolled.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,7 +54,17 @@ void main() async {
   }
 
   final isar = await Isar.open(
-    [AppSettingsSchema, UserSchema, CategorySchema, CourseSchema, BadgeUserSchema],
+    [
+      AppSettingsSchema,
+      UserSchema,
+      CategorySchema,
+      CourseSchema,
+      BadgeUserSchema,
+      CourseInfoSchema,
+      MergeWebexUserSchema,
+      StatMdlSchema,
+      UserCourseEnrolledSchema,
+    ],
     directory: dirPath ?? '',
     inspector: !kIsWeb,
   );
@@ -85,6 +99,38 @@ void main() async {
   } catch (e) {
     debugPrint('[Isar] Disallineamento schema BadgeUser: $e. Pulizia tabella badges_users.');
     await isar.writeTxn(() async => await isar.badgeUsers.clear());
+  }
+
+  // Verifica difensiva su CourseInfoSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.courseInfos.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema CourseInfo: $e. Pulizia tabella course_info.');
+    await isar.writeTxn(() async => await isar.courseInfos.clear());
+  }
+
+  // Verifica difensiva su MergeWebexUserSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.mergeWebexUsers.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema MergeWebexUser: $e. Pulizia tabella merge_webex_users.');
+    await isar.writeTxn(() async => await isar.mergeWebexUsers.clear());
+  }
+
+  // Verifica difensiva su StatMdlSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.statMdls.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema StatMdl: $e. Pulizia tabella stat_mdl.');
+    await isar.writeTxn(() async => await isar.statMdls.clear());
+  }
+
+  // Verifica difensiva su UserCourseEnrolledSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.userCourseEnrolleds.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema UserCourseEnrolled: $e. Pulizia tabella user_course_enrolled.');
+    await isar.writeTxn(() async => await isar.userCourseEnrolleds.clear());
   }
 
   // 3. Inizializzazione Proxy Service con le impostazioni persistite

@@ -34,4 +34,9 @@ class AppSettings {
   DateTime? lastCategoriesSyncDate;
   DateTime? lastCoursesSyncDate;
   DateTime? lastBadgesUsersSyncDate;
+  DateTime? lastCourseInfoSyncDate;
+  DateTime? lastMergeWebexUsersSyncDate;
+  DateTime? lastStatMdlSyncDate;
+  DateTime? lastUserCourseEnrolledSyncDate;
 }
+

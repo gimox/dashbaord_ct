@@ -10,7 +10,11 @@ import '../settings/providers/app_settings_provider.dart';
 import 'models/badge_user.dart';
 import 'models/category.dart';
 import 'models/course.dart';
+import 'models/course_info.dart';
+import 'models/merge_webex_user.dart';
+import 'models/stat_mdl.dart';
 import 'models/user.dart';
+import 'models/user_course_enrolled.dart';
 
 class SyncSettingsView extends ConsumerStatefulWidget {
   const SyncSettingsView({super.key});
@@ -44,6 +48,30 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   String? _badgesUsersSyncSuccessMessage;
   StreamSubscription<void>? _badgesUsersSub;
 
+  bool _isCourseInfoSyncing = false;
+  int _localCourseInfoCount = 0;
+  String? _courseInfoSyncErrorMessage;
+  String? _courseInfoSyncSuccessMessage;
+  StreamSubscription<void>? _courseInfoSub;
+
+  bool _isMergeWebexUsersSyncing = false;
+  int _localMergeWebexUsersCount = 0;
+  String? _mergeWebexUsersSyncErrorMessage;
+  String? _mergeWebexUsersSyncSuccessMessage;
+  StreamSubscription<void>? _mergeWebexUsersSub;
+
+  bool _isStatMdlSyncing = false;
+  int _localStatMdlCount = 0;
+  String? _statMdlSyncErrorMessage;
+  String? _statMdlSyncSuccessMessage;
+  StreamSubscription<void>? _statMdlSub;
+
+  bool _isUserCourseEnrolledSyncing = false;
+  int _localUserCourseEnrolledCount = 0;
+  String? _userCourseEnrolledSyncErrorMessage;
+  String? _userCourseEnrolledSyncSuccessMessage;
+  StreamSubscription<void>? _userCourseEnrolledSub;
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +89,18 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     _badgesUsersSub = isar.badgeUsers.watchLazy().listen((_) {
       _refreshLocalCount();
     });
+    _courseInfoSub = isar.courseInfos.watchLazy().listen((_) {
+      _refreshLocalCount();
+    });
+    _mergeWebexUsersSub = isar.mergeWebexUsers.watchLazy().listen((_) {
+      _refreshLocalCount();
+    });
+    _statMdlSub = isar.statMdls.watchLazy().listen((_) {
+      _refreshLocalCount();
+    });
+    _userCourseEnrolledSub = isar.userCourseEnrolleds.watchLazy().listen((_) {
+      _refreshLocalCount();
+    });
   }
 
   @override
@@ -69,6 +109,10 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     _categoriesSub?.cancel();
     _coursesSub?.cancel();
     _badgesUsersSub?.cancel();
+    _courseInfoSub?.cancel();
+    _mergeWebexUsersSub?.cancel();
+    _statMdlSub?.cancel();
+    _userCourseEnrolledSub?.cancel();
     super.dispose();
   }
 
@@ -78,12 +122,20 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     final catCount = await isar.categories.count();
     final courseCount = await isar.courses.count();
     final badgesUsersCount = await isar.badgeUsers.count();
+    final courseInfoCount = await isar.courseInfos.count();
+    final mergeWebexUsersCount = await isar.mergeWebexUsers.count();
+    final statMdlCount = await isar.statMdls.count();
+    final userCourseEnrolledCount = await isar.userCourseEnrolleds.count();
     if (mounted) {
       setState(() {
         _localUsersCount = count;
         _localCategoriesCount = catCount;
         _localCoursesCount = courseCount;
         _localBadgesUsersCount = badgesUsersCount;
+        _localCourseInfoCount = courseInfoCount;
+        _localMergeWebexUsersCount = mergeWebexUsersCount;
+        _localStatMdlCount = statMdlCount;
+        _localUserCourseEnrolledCount = userCourseEnrolledCount;
       });
     }
   }
@@ -107,9 +159,39 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             settings.lastBadgesUsersSyncDate!.millisecondsSinceEpoch > 0
         ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastBadgesUsersSyncDate!)
         : 'Mai eseguito';
+    final lastCourseInfoSyncText = settings.lastCourseInfoSyncDate != null &&
+            settings.lastCourseInfoSyncDate!.millisecondsSinceEpoch > 0
+        ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastCourseInfoSyncDate!)
+        : 'Mai eseguito';
+    final lastMergeWebexUsersSyncText = settings.lastMergeWebexUsersSyncDate != null &&
+            settings.lastMergeWebexUsersSyncDate!.millisecondsSinceEpoch > 0
+        ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastMergeWebexUsersSyncDate!)
+        : 'Mai eseguito';
+    final lastStatMdlSyncText = settings.lastStatMdlSyncDate != null &&
+            settings.lastStatMdlSyncDate!.millisecondsSinceEpoch > 0
+        ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastStatMdlSyncDate!)
+        : 'Mai eseguito';
+    final lastUserCourseEnrolledSyncText = settings.lastUserCourseEnrolledSyncDate != null &&
+            settings.lastUserCourseEnrolledSyncDate!.millisecondsSinceEpoch > 0
+        ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastUserCourseEnrolledSyncDate!)
+        : 'Mai eseguito';
 
-    final totalRecords = _localUsersCount + _localCategoriesCount + _localCoursesCount + _localBadgesUsersCount;
-    final isAnySyncing = _isSyncing || _isCategoriesSyncing || _isCoursesSyncing || _isBadgesUsersSyncing;
+    final totalRecords = _localUsersCount +
+        _localCategoriesCount +
+        _localCoursesCount +
+        _localBadgesUsersCount +
+        _localCourseInfoCount +
+        _localMergeWebexUsersCount +
+        _localStatMdlCount +
+        _localUserCourseEnrolledCount;
+    final isAnySyncing = _isSyncing ||
+        _isCategoriesSyncing ||
+        _isCoursesSyncing ||
+        _isBadgesUsersSyncing ||
+        _isCourseInfoSyncing ||
+        _isMergeWebexUsersSyncing ||
+        _isStatMdlSyncing ||
+        _isUserCourseEnrolledSyncing;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -156,7 +238,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '4 collezioni API collegate • $totalRecords record totali in locale',
+                                '8 collezioni API collegate • $totalRecords record totali in locale',
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -252,6 +334,66 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   onSync: _syncBadgesUsers,
                   errorMessage: _badgesUsersSyncErrorMessage,
                   successMessage: _badgesUsersSyncSuccessMessage,
+                ),
+                const SizedBox(height: 14),
+
+                _buildSyncListItem(
+                  icon: Icons.layers_outlined,
+                  iconColor: const Color(0xFF8B5CF6),
+                  title: 'Course Info (Sezioni & Moduli)',
+                  endpoint: '/course_info',
+                  description: 'Scarica sezioni e moduli didattici dettagliati (forum, quiz, attività e tracking).',
+                  lastSyncText: lastCourseInfoSyncText,
+                  localCountText: '$_localCourseInfoCount sezioni',
+                  isSyncing: _isCourseInfoSyncing,
+                  onSync: _syncCourseInfo,
+                  errorMessage: _courseInfoSyncErrorMessage,
+                  successMessage: _courseInfoSyncSuccessMessage,
+                ),
+                const SizedBox(height: 14),
+
+                _buildSyncListItem(
+                  icon: Icons.video_camera_front_outlined,
+                  iconColor: const Color(0xFF0284C7),
+                  title: 'Sessioni Webex (Merge Webex Users)',
+                  endpoint: '/merge_webex_users',
+                  description: 'Scarica le sessioni e i partecipanti Webex associati a corsi, presenze e statistiche VoIP/video.',
+                  lastSyncText: lastMergeWebexUsersSyncText,
+                  localCountText: '$_localMergeWebexUsersCount sessioni',
+                  isSyncing: _isMergeWebexUsersSyncing,
+                  onSync: _syncMergeWebexUsers,
+                  errorMessage: _mergeWebexUsersSyncErrorMessage,
+                  successMessage: _mergeWebexUsersSyncSuccessMessage,
+                ),
+                const SizedBox(height: 14),
+
+                _buildSyncListItem(
+                  icon: Icons.analytics_outlined,
+                  iconColor: const Color(0xFFD97706),
+                  title: 'Statistiche Moduli (stat_mdl)',
+                  endpoint: '/stat_mdl',
+                  description: 'Scarica le statistiche dei moduli didattici, tracking SCORM/test e completamenti utenti.',
+                  lastSyncText: lastStatMdlSyncText,
+                  localCountText: '$_localStatMdlCount statistiche',
+                  isSyncing: _isStatMdlSyncing,
+                  onSync: _syncStatMdl,
+                  errorMessage: _statMdlSyncErrorMessage,
+                  successMessage: _statMdlSyncSuccessMessage,
+                ),
+                const SizedBox(height: 14),
+
+                _buildSyncListItem(
+                  icon: Icons.how_to_reg_outlined,
+                  iconColor: const Color(0xFF0D9488),
+                  title: 'Iscrizioni Corsi (user_course_enrolled)',
+                  endpoint: '/user_course_enrolled',
+                  description: 'Scarica le associazioni dirette tra utenti e corsi (coppie course_id e user_id).',
+                  lastSyncText: lastUserCourseEnrolledSyncText,
+                  localCountText: '$_localUserCourseEnrolledCount iscrizioni',
+                  isSyncing: _isUserCourseEnrolledSyncing,
+                  onSync: _syncUserCourseEnrolled,
+                  errorMessage: _userCourseEnrolledSyncErrorMessage,
+                  successMessage: _userCourseEnrolledSyncSuccessMessage,
                 ),
               ],
             ),
@@ -492,6 +634,10 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     await _syncCategories();
     await _syncCourses();
     await _syncBadgesUsers();
+    await _syncCourseInfo();
+    await _syncMergeWebexUsers();
+    await _syncStatMdl();
+    await _syncUserCourseEnrolled();
   }
 
   Future<void> _syncUsers() async {
@@ -995,4 +1141,519 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
       }
     }
   }
+
+  Future<void> _syncCourseInfo() async {
+    final settings = ref.read(appSettingsProvider);
+    final baseUrl = settings.apiBaseUrl.trim();
+    final username = settings.apiUsername.trim();
+    final password = settings.apiPassword;
+
+    if (baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Configura prima il Base URL nel menu Impostazioni -> API SERVER.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isCourseInfoSyncing = true;
+      _courseInfoSyncErrorMessage = null;
+      _courseInfoSyncSuccessMessage = null;
+    });
+
+    try {
+      String fullUrl = baseUrl;
+      if (!fullUrl.endsWith('/')) {
+        fullUrl += '/course_info';
+      } else {
+        fullUrl += 'course_info';
+      }
+
+      final uri = Uri.parse(fullUrl);
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 30);
+
+      if (settings.bypassSslVerification) {
+        client.badCertificateCallback = (cert, host, port) => true;
+      }
+
+      final request = await client.getUrl(uri);
+
+      if (username.isNotEmpty || password.isNotEmpty) {
+        final credentials = base64Encode(utf8.encode('$username:$password'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Basic $credentials');
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(responseBody);
+        final List<CourseInfo> courseInfoList = [];
+
+        if (decoded is Map) {
+          final map = Map<String, dynamic>.from(decoded);
+          bool hasCourseIdKeys = false;
+
+          // Gestione formato chiave-corso: {"1": [{id: 320, ...}, {id: 12, ...}], "2": [...]}
+          for (final entry in map.entries) {
+            final keyCourseId = int.tryParse(entry.key);
+            if (entry.value is List) {
+              final list = entry.value as List;
+              for (final item in list) {
+                if (item is Map) {
+                  try {
+                    courseInfoList.add(CourseInfo.fromJson(
+                      Map<String, dynamic>.from(item),
+                      courseId: keyCourseId,
+                    ));
+                    hasCourseIdKeys = true;
+                  } catch (e) {
+                    debugPrint('[Sync CourseInfo] Errore parsing item: $e');
+                  }
+                }
+              }
+            }
+          }
+
+          // Fallback per risposte standard
+          if (!hasCourseIdKeys) {
+            List<dynamic> rawList = [];
+            if (map.containsKey('name') || map.containsKey('section') || map.containsKey('modules')) {
+              rawList = [map];
+            } else if (map['course_info'] is List) {
+              rawList = map['course_info'] as List;
+            } else if (map['sections'] is List) {
+              rawList = map['sections'] as List;
+            } else if (map['data'] is List) {
+              rawList = map['data'] as List;
+            } else if (map['elements'] is List) {
+              rawList = map['elements'] as List;
+            } else if (map['records'] is List) {
+              rawList = map['records'] as List;
+            } else if (map['results'] is List) {
+              rawList = map['results'] as List;
+            }
+            for (final item in rawList) {
+              if (item is Map) {
+                try {
+                  courseInfoList.add(CourseInfo.fromJson(Map<String, dynamic>.from(item)));
+                } catch (e) {
+                  debugPrint('[Sync CourseInfo] Errore parsing item: $e');
+                }
+              }
+            }
+          }
+        } else if (decoded is List) {
+          for (final item in decoded) {
+            if (item is Map) {
+              try {
+                courseInfoList.add(CourseInfo.fromJson(Map<String, dynamic>.from(item)));
+              } catch (e) {
+                debugPrint('[Sync CourseInfo] Errore parsing item: $e');
+              }
+            }
+          }
+        }
+
+        if (courseInfoList.isEmpty) {
+          setState(() {
+            _courseInfoSyncErrorMessage = 'Nessuna informazione corso valida estratta dalla risposta del server.\n'
+                'Risposta ricevuta: ${responseBody.length > 250 ? '${responseBody.substring(0, 250)}...' : responseBody}';
+          });
+          return;
+        }
+
+        final isar = ref.read(isarProvider);
+        await isar.writeTxn(() async {
+          await isar.courseInfos.putAll(courseInfoList);
+        });
+
+        final now = DateTime.now();
+        await ref.read(appSettingsProvider.notifier).updateCourseInfoSyncDate(now);
+        await _refreshLocalCount();
+
+        setState(() {
+          _courseInfoSyncSuccessMessage = 'Sincronizzazione completata con successo: ${courseInfoList.length} sezioni/record Course Info salvati nel database!';
+        });
+      } else {
+        setState(() {
+          _courseInfoSyncErrorMessage = 'Risposta HTTP ${response.statusCode}: $responseBody';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _courseInfoSyncErrorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isCourseInfoSyncing = false);
+      }
+    }
+  }
+
+  Future<void> _syncMergeWebexUsers() async {
+    final settings = ref.read(appSettingsProvider);
+    final baseUrl = settings.apiBaseUrl.trim();
+    final username = settings.apiUsername.trim();
+    final password = settings.apiPassword;
+
+    if (baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Configura prima il Base URL nel menu Impostazioni -> API SERVER.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isMergeWebexUsersSyncing = true;
+      _mergeWebexUsersSyncErrorMessage = null;
+      _mergeWebexUsersSyncSuccessMessage = null;
+    });
+
+    try {
+      String fullUrl = baseUrl;
+      if (!fullUrl.endsWith('/')) {
+        fullUrl += '/merge_webex_users';
+      } else {
+        fullUrl += 'merge_webex_users';
+      }
+
+      final uri = Uri.parse(fullUrl);
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 45);
+
+      if (settings.bypassSslVerification) {
+        client.badCertificateCallback = (cert, host, port) => true;
+      }
+
+      final request = await client.getUrl(uri);
+
+      if (username.isNotEmpty || password.isNotEmpty) {
+        final credentials = base64Encode(utf8.encode('$username:$password'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Basic $credentials');
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(responseBody);
+        List<dynamic> rawList = [];
+
+        if (decoded is List) {
+          rawList = decoded;
+        } else if (decoded is Map) {
+          final map = Map<String, dynamic>.from(decoded);
+          if (map.containsKey('MEETING_NUMBER') || map.containsKey('USER_NAME') || map.containsKey('EMAIL')) {
+            rawList = [map];
+          } else if (map['merge_webex_users'] is List) {
+            rawList = map['merge_webex_users'] as List;
+          } else if (map['webex_users'] is List) {
+            rawList = map['webex_users'] as List;
+          } else if (map['elements'] is List) {
+            rawList = map['elements'] as List;
+          } else if (map['data'] is List) {
+            rawList = map['data'] as List;
+          } else if (map['records'] is List) {
+            rawList = map['records'] as List;
+          } else if (map['results'] is List) {
+            rawList = map['results'] as List;
+          }
+        }
+
+        final List<MergeWebexUser> webexUsers = [];
+        for (final item in rawList) {
+          if (item is Map) {
+            try {
+              webexUsers.add(MergeWebexUser.fromJson(Map<String, dynamic>.from(item)));
+            } catch (e) {
+              debugPrint('[Sync MergeWebexUser] Errore parsing item: $e');
+            }
+          }
+        }
+
+        if (webexUsers.isEmpty) {
+          setState(() {
+            _mergeWebexUsersSyncErrorMessage = 'Nessuna sessione Webex valida estratta dalla risposta del server.\n'
+                'Risposta ricevuta: ${responseBody.length > 250 ? '${responseBody.substring(0, 250)}...' : responseBody}';
+          });
+          return;
+        }
+
+        final isar = ref.read(isarProvider);
+        await isar.writeTxn(() async {
+          await isar.mergeWebexUsers.putAll(webexUsers);
+        });
+
+        final now = DateTime.now();
+        await ref.read(appSettingsProvider.notifier).updateMergeWebexUsersSyncDate(now);
+        await _refreshLocalCount();
+
+        setState(() {
+          _mergeWebexUsersSyncSuccessMessage =
+              'Sincronizzazione completata con successo: ${webexUsers.length} sessioni Webex salvate nel database!';
+        });
+      } else {
+        setState(() {
+          _mergeWebexUsersSyncErrorMessage = 'Risposta HTTP ${response.statusCode}: $responseBody';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _mergeWebexUsersSyncErrorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isMergeWebexUsersSyncing = false);
+      }
+    }
+  }
+
+  Future<void> _syncStatMdl() async {
+    final settings = ref.read(appSettingsProvider);
+    final baseUrl = settings.apiBaseUrl.trim();
+    final username = settings.apiUsername.trim();
+    final password = settings.apiPassword;
+
+    if (baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Configura prima il Base URL nel menu Impostazioni -> API SERVER.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isStatMdlSyncing = true;
+      _statMdlSyncErrorMessage = null;
+      _statMdlSyncSuccessMessage = null;
+    });
+
+    try {
+      String fullUrl = baseUrl;
+      if (!fullUrl.endsWith('/')) {
+        fullUrl += '/stat_mdl';
+      } else {
+        fullUrl += 'stat_mdl';
+      }
+
+      final uri = Uri.parse(fullUrl);
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 45);
+
+      if (settings.bypassSslVerification) {
+        client.badCertificateCallback = (cert, host, port) => true;
+      }
+
+      final request = await client.getUrl(uri);
+
+      if (username.isNotEmpty || password.isNotEmpty) {
+        final credentials = base64Encode(utf8.encode('$username:$password'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Basic $credentials');
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(responseBody);
+        List<dynamic> rawList = [];
+
+        if (decoded is List) {
+          rawList = decoded;
+        } else if (decoded is Map) {
+          final map = Map<String, dynamic>.from(decoded);
+          if (map.containsKey('id') || map.containsKey('username') || map.containsKey('id_modulo')) {
+            rawList = [map];
+          } else if (map['stat_mdl'] is List) {
+            rawList = map['stat_mdl'] as List;
+          } else if (map['stat_modules'] is List) {
+            rawList = map['stat_modules'] as List;
+          } else if (map['elements'] is List) {
+            rawList = map['elements'] as List;
+          } else if (map['data'] is List) {
+            rawList = map['data'] as List;
+          } else if (map['records'] is List) {
+            rawList = map['records'] as List;
+          } else if (map['results'] is List) {
+            rawList = map['results'] as List;
+          }
+        }
+
+        final List<StatMdl> statMdlList = [];
+        for (final item in rawList) {
+          if (item is Map) {
+            try {
+              statMdlList.add(StatMdl.fromJson(Map<String, dynamic>.from(item)));
+            } catch (e) {
+              debugPrint('[Sync StatMdl] Errore parsing item: $e');
+            }
+          }
+        }
+
+        if (statMdlList.isEmpty) {
+          setState(() {
+            _statMdlSyncErrorMessage = 'Nessuna statistica modulo valida estratta dalla risposta del server.\n'
+                'Risposta ricevuta: ${responseBody.length > 250 ? '${responseBody.substring(0, 250)}...' : responseBody}';
+          });
+          return;
+        }
+
+        final isar = ref.read(isarProvider);
+        await isar.writeTxn(() async {
+          await isar.statMdls.putAll(statMdlList);
+        });
+
+        final now = DateTime.now();
+        await ref.read(appSettingsProvider.notifier).updateStatMdlSyncDate(now);
+        await _refreshLocalCount();
+
+        setState(() {
+          _statMdlSyncSuccessMessage =
+              'Sincronizzazione completata con successo: ${statMdlList.length} statistiche moduli salvate nel database!';
+        });
+      } else {
+        setState(() {
+          _statMdlSyncErrorMessage = 'Risposta HTTP ${response.statusCode}: $responseBody';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _statMdlSyncErrorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isStatMdlSyncing = false);
+      }
+    }
+  }
+
+  Future<void> _syncUserCourseEnrolled() async {
+    final settings = ref.read(appSettingsProvider);
+    final baseUrl = settings.apiBaseUrl.trim();
+    final username = settings.apiUsername.trim();
+    final password = settings.apiPassword;
+
+    if (baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Configura prima il Base URL nel menu Impostazioni -> API SERVER.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isUserCourseEnrolledSyncing = true;
+      _userCourseEnrolledSyncErrorMessage = null;
+      _userCourseEnrolledSyncSuccessMessage = null;
+    });
+
+    try {
+      String fullUrl = baseUrl;
+      if (!fullUrl.endsWith('/')) {
+        fullUrl += '/user_course_enrolled';
+      } else {
+        fullUrl += 'user_course_enrolled';
+      }
+
+      final uri = Uri.parse(fullUrl);
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 45);
+
+      if (settings.bypassSslVerification) {
+        client.badCertificateCallback = (cert, host, port) => true;
+      }
+
+      final request = await client.getUrl(uri);
+
+      if (username.isNotEmpty || password.isNotEmpty) {
+        final credentials = base64Encode(utf8.encode('$username:$password'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Basic $credentials');
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final dynamic decoded = jsonDecode(responseBody);
+        List<dynamic> rawList = [];
+
+        if (decoded is List) {
+          rawList = decoded;
+        } else if (decoded is Map<String, dynamic>) {
+          final map = decoded;
+          if (map['user_course_enrolled'] is List) {
+            rawList = map['user_course_enrolled'] as List;
+          } else if (map['elements'] is List) {
+            rawList = map['elements'] as List;
+          } else if (map['data'] is List) {
+            rawList = map['data'] as List;
+          } else if (map['records'] is List) {
+            rawList = map['records'] as List;
+          } else if (map['results'] is List) {
+            rawList = map['results'] as List;
+          }
+        }
+
+        final List<UserCourseEnrolled> enrolledList = [];
+        for (final item in rawList) {
+          if (item is Map) {
+            try {
+              enrolledList.add(UserCourseEnrolled.fromJson(Map<String, dynamic>.from(item)));
+            } catch (e) {
+              debugPrint('[Sync UserCourseEnrolled] Errore parsing item: $e');
+            }
+          }
+        }
+
+        if (enrolledList.isEmpty) {
+          setState(() {
+            _userCourseEnrolledSyncErrorMessage =
+                'Nessuna iscrizione corso valida estratta dalla risposta del server.\n'
+                'Risposta ricevuta: ${responseBody.length > 250 ? '${responseBody.substring(0, 250)}...' : responseBody}';
+          });
+          return;
+        }
+
+        final isar = ref.read(isarProvider);
+        await isar.writeTxn(() async {
+          await isar.userCourseEnrolleds.putAll(enrolledList);
+        });
+
+        final now = DateTime.now();
+        await ref.read(appSettingsProvider.notifier).updateUserCourseEnrolledSyncDate(now);
+        await _refreshLocalCount();
+
+        setState(() {
+          _userCourseEnrolledSyncSuccessMessage =
+              'Sincronizzazione completata con successo: ${enrolledList.length} iscrizioni salvate nel database!';
+        });
+      } else {
+        setState(() {
+          _userCourseEnrolledSyncErrorMessage = 'Risposta HTTP ${response.statusCode}: $responseBody';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _userCourseEnrolledSyncErrorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isUserCourseEnrolledSyncing = false);
+      }
+    }
+  }
 }
+
+
