@@ -22,6 +22,20 @@ dependencies:
   excel: ^4.0.6
   file_picker: ^11.0.3
   flutter_widget_from_html: ^0.17.4
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: false # can specify file name here e.g. "ic_launcher"
+  ios: false # can specify file name here e.g. "My-Launcher-Icon"
+  web:
+    generate: false
+  windows:
+    generate: true
+    image_path: "assets/icons/icon-1024.png"
+    icon_size: 48 # min:48, max:256, default: 48
+  macos:
+    generate: true
+    image_path: "assets/icons/icon-1024.png"
 
 dev_dependencies:
   flutter_test:

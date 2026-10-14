@@ -76,14 +76,18 @@ jobs:
               $env:PATH = "$innoPath;$env:PATH"
             }
           }
-          iscc windows/installer/inno_setup.iss
+          iscc /O. /F"App_Windows_Setup" windows/installer/inno_setup.iss
+          if ($LASTEXITCODE -ne 0) {
+            throw "Compilazione Inno Setup fallita con codice di errore: $LASTEXITCODE"
+          }
           if (-not (Test-Path "App_Windows_Setup.exe")) {
             if (Test-Path "windows\installer\App_Windows_Setup.exe") {
               Move-Item "windows\installer\App_Windows_Setup.exe" "App_Windows_Setup.exe"
-            } elseif (Test-Path "CyberProTrain_Admin_Setup.exe") {
-              Move-Item "CyberProTrain_Admin_Setup.exe" "App_Windows_Setup.exe"
-            } elseif (Test-Path "windows\installer\CyberProTrain_Admin_Setup.exe") {
-              Move-Item "windows\installer\CyberProTrain_Admin_Setup.exe" "App_Windows_Setup.exe"
+            } elseif (Test-Path "windows\installer\Output\App_Windows_Setup.exe") {
+              Move-Item "windows\installer\Output\App_Windows_Setup.exe" "App_Windows_Setup.exe"
+            } else {
+              Get-ChildItem -Recurse -Filter "*Setup*.exe"
+              throw "App_Windows_Setup.exe non trovato dopo la compilazione Inno Setup!"
             }
           }
 
@@ -92,12 +96,14 @@ jobs:
         with:
           name: windows-zip
           path: App_Windows.zip
+          if-no-files-found: error
 
       - name: Upload Windows Installer Artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
           path: App_Windows_Setup.exe
+          if-no-files-found: error
 
   build-linux:
     name: Build Linux App
