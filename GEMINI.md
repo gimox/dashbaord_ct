@@ -34,12 +34,17 @@ Segui il file GEMINI_TEMPLATE.MD come guida per creare la struttura base di un'a
 - **Responsiveness:** Ogni schermata e componente DEVE usare layout adattivi (`LayoutBuilder`, `MediaQuery`).
 - **Sidebar Animata:** Gestione rigorosa dei vincoli: evitare `OverflowBox` non vincolati dentro `Column`; usare `FittedBox(fit: BoxFit.scaleDown)` e padding interni agli `Expanded` per prevenire overflow durante le transizioni di larghezza (76px ↔ 240px).
 - **Navigazione Laterale:**
-  - `Home`: vista principale della dashboard.
+  - `Dashboard`: vista principale con metriche KPI, grafici responsive e monitoraggio utenti.
+  - `Progresso`: vista aggregata per utente e corso con avanzamento moduli e completamenti.
+  - `Iscrizioni`: elenco iscrizioni utenti-corsi (`user_course_enrolled`).
+  - Entità: `Users`, `Courses`, `Categories`, `Badges`, `Course Info`, `Statistiche`.
   - `Impostazioni`: menu genitore comprimibile con sotto-menu dedicati:
     - `Sync`: pannello sincronizzazione entità.
     - `Rete & Proxy`: configurazione proxy aziendale, PAC, SSL inspection.
     - `API SERVER`: parametri endpoint, autenticazione e test di connessione.
     - `Database`: monitoraggio e reset tabelle Isar.
+    - `Esclusioni`: gestione degli ID corsi esclusi dalle elaborazioni e dalla reportistica.
+    - `Aggiornamenti`: verifica automatica release GitHub, download in streaming e installazione no-admin.
 
 ## 3. MODULI FUNZIONALI ATTIVI
 - **Rete & Proxy:** `ProxyService` con override globale di `HttpOverrides`, auto-detect di sistema (scutil / reg), bypass SSL (`bypassSslVerification`) e supporto credenziali.
@@ -50,7 +55,10 @@ Segui il file GEMINI_TEMPLATE.MD come guida per creare la struttura base di un'a
   - Upsert massivo (`putAll`) nel database locale Isar da endpoint API.
 
 ## 4. BUILD & RELEASE CI/CD
-- GitHub Actions workflow in `.github/workflows/desktop_release.yml` per packaging automatico DMG (macOS) e ZIP (Windows) su tag di release.
+- GitHub Actions workflow in `.github/workflows/desktop_release.yml` per packaging automatico multipiattaforma su tag di release:
+  - **macOS:** DMG montabile.
+  - **Windows:** Archivio ZIP portabile + Installer Setup (`.exe`) creato con Inno Setup senza richiesta di privilegi amministrativi (`PrivilegesRequired=lowest`).
+  - **Linux:** Archivio `tar.gz` con binario e librerie per distribuzioni Linux x86_64.
 - Entitlements macOS sandbox configurati per consentire connessioni di rete in uscita (`com.apple.security.network.client`).
 
 ## 5. STANDARD TEMPLATE VISTE ENTITÀ (TEMPLATE GUIDA: USERS)
@@ -163,3 +171,31 @@ Replicare fedelmente la struttura di `UsersListView`:
   - In tutti gli altri casi, il corso è classificato come **`sync`** (Sincrono).
 - **Proprietà del Modello:** Esporre sempre la proprietà `course_type` (alias lowerCamelCase `courseType` con getter `course_type`).
 - **Visualizzazione UI:** Mostrare la colonna dedicata `TIPO CORSO` con pill/badge colorato (Async / Sync), supporto all'ordinamento, integrazione nei filtri (ChoiceChip) e nell'esportazione Excel.
+
+
+### Definizione e Classificazione Utenti (Dashboard & KPI)
+- **Regola Esclusione Corsi:** Tutti i conteggi degli utenti (Iscritti, Attivi, Partecipanti) e le relative elaborazioni della Dashboard (grafici gender, avanzamento didattico, ripartizione per corso, export Excel) tengono conto dei corsi presenti nella tabella delle esclusioni (`CourseExclusion`). Gli utenti iscritti unicamente a corsi esclusi non vengono conteggiati tra gli utenti iscritti né tra gli utenti attivi.
+- **1. Utenti Iscritti (`uniqueEnrolledUsers`):**
+  - **Definizione:** Popolazione totale degli utenti unici (`userId > 0`) presenti nella tabella delle iscrizioni ai corsi (`user_course_enrolled`) associati a corsi NON esclusi.
+  - **Significato:** Utenti formalmente registrati ad almeno un corso a catalogo non escluso.
+
+- **2. Utenti Attivi (`uniqueActiveUsers`):**
+  - **Definizione Fondamentale:** È il sottoinsieme degli **Utenti Iscritti** (a corsi non esclusi) che hanno effettuato **almeno un accesso effettivo alla piattaforma**.
+  - **Regola Tecnica:** Un utente con iscrizione a corso non escluso è qualificato come **Attivo** se e solo se il corrispondente record in anagrafica `User` ha il timestamp del primo accesso valorizzato e positivo:
+    ```dart
+    u != null && u.firstaccess != null && u.firstaccess! > 0
+    ```
+  - **Ambiti di Applicazione nei Grafici e Report della Dashboard:**
+    - **Distribuzione Gender Utenti Attivi:** Ripartizione per sesso (Maschile, Femminile, Non Classificato) e per lingua del corso calcolata **esclusivamente** sulla popolazione degli Utenti Attivi.
+    - **Stato Avanzamento Utenti Attivi:** Monitoraggio della progressione didattica degli Utenti Attivi suddivisi in:
+      - *Completati:* Utenti attivi che hanno completato con successo almeno un corso (`statoCompletamentoCorso == 'completato'` o presenza di `dataCompletamentoCorso`).
+      - *In Corso:* Utenti attivi che hanno iniziato la fruizione dei moduli ma non hanno ancora completato il percorso.
+      - *Solo Iscritti:* Utenti attivi che, pur essendosi autenticati almeno una volta sulla piattaforma (`firstaccess > 0`), non hanno ancora avviato alcun modulo didattico.
+      - *Sincrono / Asincrono:* Classificazione incrociata secondo la tipologia del corso (`sync` o `async`).
+    - **Distribuzione Iscrizioni per Corso (Utenti Attivi):** Volume di iscrizioni per singolo corso conteggiando unicamente gli utenti attivi, con breakdown per genere e tasso di completamento.
+
+- **3. Utenti Partecipanti (`uniqueParticipatingUsers`):**
+  - **Definizione:** Utenti distinti estratti da `stat_mdl` che risultano aver partecipato alle attività formative (avviato o completato corsi/moduli, con tracciamento di date di accesso o completamento attività).
+
+- **4. Totale Iscrizioni a tutti i corsi (`totalEnrollments`):**
+  - **Definizione:** Volume complessivo di tutte le iscrizioni a corsi non esclusi presenti in `user_course_enrolled`, conteggiando ciascun utente al massimo una sola volta per singolo corso (iscrizioni uniche corso-utente, con conteggio multi-corso su corsi distinti). Include ripartizione per Genere (Maschile, Femminile, Non Classificato) e per Lingua preferita.

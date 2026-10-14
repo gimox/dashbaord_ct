@@ -9,6 +9,7 @@ import '../course_info/course_info_list_view.dart';
 import '../courses/courses_list_view.dart';
 import '../database/db_settings_view.dart';
 import '../enrollments/enrollments_list_view.dart';
+import '../exclusions/exclusions_view.dart';
 import '../settings/models/app_settings.dart';
 import '../settings/providers/app_settings_provider.dart';
 import '../settings/settings_view.dart';
@@ -16,25 +17,37 @@ import '../stats/stat_mdl_list_view.dart';
 import '../stats/user_course_stats_view.dart';
 import '../sync/providers/global_sync_provider.dart';
 import '../sync/sync_view.dart';
+import '../updater/providers/app_update_provider.dart';
+import '../updater/updater_view.dart';
+import '../updater/widgets/app_update_dialog.dart';
 import '../users/users_list_view.dart';
 import 'home_dashboard_view.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   bool _isSidebarCollapsed = false;
   bool _isSettingsMenuExpanded = true;
 
+  @override
+  void initState() {
+    super.initState();
+    // Controllo automatico aggiornamenti in background all'avvio
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(appUpdateProvider.notifier).checkForUpdate(silent: true);
+    });
+  }
+
   String _getTitle() {
     switch (_selectedIndex) {
       case 0:
-        return 'Home';
+        return 'Dashboard';
       case 1:
         return 'Gestione Utenti (Users)';
       case 7:
@@ -48,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 10:
         return 'Statistiche (stat_mdl)';
       case 11:
-        return 'Vista per Utente';
+        return 'Progresso';
       case 12:
         return 'Gestione Iscrizioni (user_course_enrolled)';
       case 2:
@@ -59,6 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Sincronizzazione Dati';
       case 5:
         return 'Gestione Database Locale (Isar)';
+      case 13:
+        return 'Esclusioni';
+      case 14:
+        return 'Aggiornamenti';
       default:
         return 'Dashboard';
     }
@@ -92,6 +109,10 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Allinea le collezioni del server API remoto con il database locale Isar.';
       case 5:
         return 'Monitora le tabelle registrate, il numero di record e gestisci il reset delle entità.';
+      case 13:
+        return 'Gestione dei corsi e delle regole di esclusione da reportistica e dashboard.';
+      case 14:
+        return 'Verifica e installazione nuove versioni dell\'applicazione rilasciate su GitHub.';
       default:
         return '';
     }
@@ -174,9 +195,23 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             _buildNavItem(
                               index: 0,
-                              icon: Icons.home_outlined,
-                              selectedIcon: Icons.home,
-                              title: 'Home',
+                              icon: Icons.dashboard_outlined,
+                              selectedIcon: Icons.dashboard_rounded,
+                              title: 'Dashboard',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 11,
+                              icon: Icons.person_pin_outlined,
+                              selectedIcon: Icons.person_pin_rounded,
+                              title: 'Progresso',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 12,
+                              icon: Icons.how_to_reg_outlined,
+                              selectedIcon: Icons.how_to_reg_rounded,
+                              title: 'Iscrizioni',
                               isCollapsed: collapsed,
                             ),
                             _buildNavItem(
@@ -221,20 +256,6 @@ class _HomeScreenState extends State<HomeScreen> {
                               title: 'Statistiche',
                               isCollapsed: collapsed,
                             ),
-                            _buildNavItem(
-                              index: 11,
-                              icon: Icons.person_pin_outlined,
-                              selectedIcon: Icons.person_pin_rounded,
-                              title: 'Vista per utente',
-                              isCollapsed: collapsed,
-                            ),
-                            _buildNavItem(
-                              index: 12,
-                              icon: Icons.how_to_reg_outlined,
-                              selectedIcon: Icons.how_to_reg_rounded,
-                              title: 'Iscrizioni',
-                              isCollapsed: collapsed,
-                            ),
 
                             const SizedBox(height: 8),
                             const Divider(height: 1, indent: 16, endIndent: 16),
@@ -270,6 +291,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                 title: 'Database (DB)',
                                 isCollapsed: true,
                               ),
+                              _buildNavItem(
+                                index: 13,
+                                icon: Icons.rule_folder_outlined,
+                                selectedIcon: Icons.rule_folder_rounded,
+                                title: 'Esclusioni',
+                                isCollapsed: true,
+                              ),
+                              _buildNavItem(
+                                index: 14,
+                                icon: Icons.system_update_alt_rounded,
+                                selectedIcon: Icons.system_update_alt_rounded,
+                                title: 'Aggiornamenti',
+                                isCollapsed: true,
+                              ),
                             ] else ...[
                               // Voce Principale: Impostazioni con Sotto-Menu
                               _buildParentSettingsItem(),
@@ -298,6 +333,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                   icon: Icons.dns_outlined,
                                   selectedIcon: Icons.dns_rounded,
                                   title: 'Database (DB)',
+                                ),
+                                _buildSubNavItem(
+                                  index: 13,
+                                  icon: Icons.rule_folder_outlined,
+                                  selectedIcon: Icons.rule_folder_rounded,
+                                  title: 'Esclusioni',
+                                ),
+                                _buildSubNavItem(
+                                  index: 14,
+                                  icon: Icons.system_update_alt_rounded,
+                                  selectedIcon: Icons.system_update_alt_rounded,
+                                  title: 'Aggiornamenti',
                                 ),
                               ],
                             ],
@@ -388,7 +435,33 @@ class _HomeScreenState extends State<HomeScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          // Se c'è un aggiornamento disponibile, mostra il pulsante in risalto
+                          Consumer(
+                            builder: (context, ref, _) {
+                              final updateState = ref.watch(appUpdateProvider);
+                              if (updateState.status == AppUpdateStatus.updateAvailable && updateState.info != null) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 12),
+                                  child: FilledButton.tonalIcon(
+                                    onPressed: () => AppUpdateDialog.show(context, updateState.info!),
+                                    icon: const Icon(Icons.new_releases_rounded, size: 18, color: Colors.orange),
+                                    label: Text(
+                                      'Aggiornamento v${updateState.info!.latestVersion}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppTheme.primaryBlue.withAlpha(20),
+                                      foregroundColor: AppTheme.primaryBlue,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                          const SizedBox(width: 8),
                           HeaderSyncButton(
                             onNavigateToApiSettings: () => setState(() => _selectedIndex = 3),
                           ),
@@ -419,6 +492,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           const StatMdlListView(),
                           const UserCourseStatsView(),
                           const EnrollmentsListView(),
+                          const ExclusionsView(),
+                          const UpdaterView(),
                         ],
                       ),
                     ),
@@ -483,7 +558,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Voce Genitore "Impostazioni" espandibile
   Widget _buildParentSettingsItem() {
-    final isChildSelected = _selectedIndex >= 2 && _selectedIndex <= 5;
+    final isChildSelected = (_selectedIndex >= 2 && _selectedIndex <= 5) || _selectedIndex == 13 || _selectedIndex == 14;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: InkWell(

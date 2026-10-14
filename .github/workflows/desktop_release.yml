@@ -63,15 +63,71 @@ jobs:
         run: |
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath App_Windows.zip
 
-      - name: Upload Windows Artifact
+      - name: Build Windows Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $innoPath = "C:\Program Files (x86)\Inno Setup 6"
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            if (Test-Path "$innoPath\ISCC.exe") {
+              echo "$innoPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              $env:PATH = "$innoPath;$env:PATH"
+            } else {
+              choco install innosetup -y
+              $env:PATH = "$innoPath;$env:PATH"
+            }
+          }
+          iscc windows/installer/inno_setup.iss
+          Move-Item CyberProTrain_Admin_Setup.exe App_Windows_Setup.exe
+
+      - name: Upload Windows ZIP Artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-zip
           path: App_Windows.zip
 
+      - name: Upload Windows Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: App_Windows_Setup.exe
+
+  build-linux:
+    name: Build Linux App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Package Linux (TAR.GZ)
+        run: |
+          tar -czvf App_Linux.tar.gz -C build/linux/x64/release/bundle .
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-tar
+          path: App_Linux.tar.gz
+
   create-release:
     name: Create GitHub Release
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -84,10 +140,20 @@ jobs:
         with:
           name: macos-dmg
 
-      - name: Download Windows Artifact
+      - name: Download Windows ZIP Artifact
         uses: actions/download-artifact@v4
         with:
           name: windows-zip
+
+      - name: Download Windows Installer Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-tar
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -95,6 +161,8 @@ jobs:
           files: |
             App_macOS.dmg
             App_Windows.zip
+            App_Windows_Setup.exe
+            App_Linux.tar.gz
           draft: false
           prerelease: false
         env:

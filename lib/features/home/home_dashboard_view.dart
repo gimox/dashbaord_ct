@@ -9,6 +9,7 @@ import '../sync/models/stat_mdl.dart';
 import '../sync/models/user.dart';
 import '../sync/models/user_course_enrolled.dart';
 import '../sync/models/course.dart';
+import '../exclusions/models/course_exclusion.dart';
 import 'models/course_active_stat.dart';
 import 'services/active_users_progress_excel_exporter.dart';
 import 'services/course_active_stats_excel_exporter.dart';
@@ -41,6 +42,14 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   int _activeUnclassifiedCount = 0;
   Map<String, int> _activeLangCounts = {};
   Map<String, Map<String, int>> _activeGenderLangCounts = {};
+
+  // Totale Iscrizioni (conteggio multi-corso per tutti i corsi non esclusi)
+  int _totalEnrollmentsCount = 0;
+  int _enrollmentMaleCount = 0;
+  int _enrollmentFemaleCount = 0;
+  int _enrollmentUnclassifiedCount = 0;
+  Map<String, int> _enrollmentLangCounts = {};
+  Map<String, Map<String, int>> _enrollmentGenderLangCounts = {};
   int _completedMale = 0;
   int _completedFemale = 0;
   int _completedUnclass = 0;
@@ -73,6 +82,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   StreamSubscription<void>? _enrolledSub;
   StreamSubscription<void>? _usersSub;
   StreamSubscription<void>? _coursesSub;
+  StreamSubscription<void>? _exclusionsSub;
 
   @override
   void initState() {
@@ -91,6 +101,9 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     _coursesSub = isar.courses.watchLazy().listen((_) {
       _loadAllData();
     });
+    _exclusionsSub = isar.courseExclusions.watchLazy().listen((_) {
+      _loadAllData();
+    });
   }
 
   @override
@@ -99,6 +112,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     _enrolledSub?.cancel();
     _usersSub?.cancel();
     _coursesSub?.cancel();
+    _exclusionsSub?.cancel();
     super.dispose();
   }
 
@@ -248,10 +262,48 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     try {
       final isar = ref.read(isarProvider);
 
-      // 1. Conteggio utenti singoli partecipanti da stat_mdl (hanno iniziato o completato il corso)
+      // 0. Caricamento corsi esclusi e mappatura codici/prefissi
+      final exclusions = await isar.courseExclusions.where().findAll();
+      final allCourses = await isar.courses.where().findAll();
+      final Map<int, Course> coursesMap = {for (final c in allCourses) c.id: c};
+
+      final Set<int> excludedCourseIds = {};
+      final Map<int, int> prefixToCourseId = {};
+      final Map<int, int> courseIdToPrefix = {};
+
+      for (final c in allCourses) {
+        if (c.shortname != null) {
+          final match = RegExp(r'^(\d+)').firstMatch(c.shortname!.trim());
+          if (match != null) {
+            final prefix = int.tryParse(match.group(1)!);
+            if (prefix != null) {
+              prefixToCourseId[prefix] = c.id;
+              courseIdToPrefix[c.id] = prefix;
+            }
+          }
+        }
+      }
+
+      for (final e in exclusions) {
+        excludedCourseIds.add(e.courseId);
+        if (prefixToCourseId.containsKey(e.courseId)) {
+          excludedCourseIds.add(prefixToCourseId[e.courseId]!);
+        }
+        if (courseIdToPrefix.containsKey(e.courseId)) {
+          excludedCourseIds.add(courseIdToPrefix[e.courseId]!);
+        }
+      }
+
+      // 1. Conteggio utenti singoli partecipanti da stat_mdl (hanno iniziato o completato un corso non escluso)
       final rawStats = await isar.statMdls.where().findAll();
+      final validStats = rawStats.where((s) {
+        final cId = s.idCorso;
+        if (cId != null && excludedCourseIds.contains(cId)) return false;
+        return true;
+      }).toList();
+
       final Set<dynamic> uniqueParticipatingUsers = {};
-      for (final stat in rawStats) {
+      for (final stat in validStats) {
         final st = (stat.statoCompletamentoCorso ?? '').trim().toLowerCase();
         final hasCompleted = st == 'completato' || stat.dataCompletamentoCorso != null;
         final hasStarted = st == 'in corso' ||
@@ -273,18 +325,87 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
         }
       }
 
-      // 2. Conteggio utenti singoli iscritti da user_course_enrolled
+      // 2. Conteggio iscrizioni e utenti singoli da user_course_enrolled (escludendo i corsi in blacklist)
       final rawEnrolled = await isar.userCourseEnrolleds.where().findAll();
+      final validEnrolled = rawEnrolled.where((item) {
+        final cId = item.courseId;
+        if (cId == null || excludedCourseIds.contains(cId)) return false;
+        return true;
+      }).toList();
+
+      final allUsers = await isar.users.where().findAll();
+      final Map<int, User> usersMap = {for (final u in allUsers) u.id: u};
+
+      // Deduplica sullo stesso corso per lo stesso utente (ogni coppia corso-utente conta al massimo 1 volta)
+      final Set<String> seenCourseUserEnrollments = {};
+      final List<UserCourseEnrolled> distinctCourseEnrolled = [];
+      for (final item in validEnrolled) {
+        final uId = item.userId;
+        final cId = item.courseId;
+        if (uId != null && cId != null && uId > 0 && cId > 0) {
+          if (seenCourseUserEnrollments.add('$cId-$uId')) {
+            distinctCourseEnrolled.add(item);
+          }
+        }
+      }
+
+      // 2b. Totale complessivo di tutte le iscrizioni a corsi non esclusi (singolo utente conteggiato 1 sola volta per corso) con Gender e Lingua
+      int totalEnrollments = 0;
+      int enrMale = 0;
+      int enrFemale = 0;
+      int enrUnclass = 0;
+      final Map<String, int> enrLangMap = {};
+      final Map<String, Map<String, int>> enrGenderLangMap = {};
+
+      for (final item in distinctCourseEnrolled) {
+        totalEnrollments++;
+        final uId = item.userId;
+        final u = uId != null ? usersMap[uId] : null;
+
+        final rawGender = u != null
+            ? _getCustomFieldValue(u, ['gender', 'sesso', 'genere'])?.trim().toLowerCase() ?? ''
+            : '';
+        final String genderKey;
+        if (rawGender == 'm' || rawGender.startsWith('masch') || rawGender == 'male') {
+          enrMale++;
+          genderKey = 'M';
+        } else if (rawGender == 'f' || rawGender.startsWith('femm') || rawGender == 'female') {
+          enrFemale++;
+          genderKey = 'F';
+        } else {
+          enrUnclass++;
+          genderKey = 'N.C.';
+        }
+
+        final rawLang = u != null
+            ? (_getCustomFieldValue(u, [
+                'user\'s pref course lang',
+                'pref course lang',
+                'course lang',
+                'course_lang',
+                'prefcourselang',
+                'pref_course_lang',
+                'lang',
+              ]) ?? (u.lang?.trim().isNotEmpty == true ? u.lang!.trim() : null))
+            : null;
+
+        final langCode = (rawLang != null && rawLang.trim().isNotEmpty)
+            ? rawLang.trim().toUpperCase()
+            : 'N.D.';
+
+        enrLangMap[langCode] = (enrLangMap[langCode] ?? 0) + 1;
+        enrGenderLangMap.putIfAbsent(langCode, () => {})[genderKey] =
+            (enrGenderLangMap[langCode]![genderKey] ?? 0) + 1;
+      }
+
       final Set<int> uniqueEnrolledUsers = {};
-      for (final item in rawEnrolled) {
+      for (final item in validEnrolled) {
         if (item.userId != null && item.userId! > 0) {
           uniqueEnrolledUsers.add(item.userId!);
         }
       }
 
-      // 3. Conteggio utenti attivi e calcolo distribuzione gender
-      final allUsers = await isar.users.where().findAll();
-      final Map<int, User> usersMap = {for (final u in allUsers) u.id: u};
+      // 3. Conteggio utenti attivi (iscritti a corsi validi con firstaccess > 0) e calcolo distribuzione gender
       final Set<int> uniqueActiveUsers = {};
       int maleCount = 0;
       int femaleCount = 0;
@@ -330,11 +451,11 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
         }
       }
 
-      // 4. Mappatura tipo corso (sync/async) e completamento corsi da stat_mdl
+      // 4. Mappatura tipo corso (sync/async) e completamento corsi da validStats
       final Map<int, List<String>> courseTagsMap = {};
       final Set<String> completedCourseUserSet = {};
 
-      for (final stat in rawStats) {
+      for (final stat in validStats) {
         final cId = stat.idCorso;
         final uId = stat.userId;
         if (cId != null) {
@@ -362,12 +483,25 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
       }
 
       // 5. Distribuzione iscrizioni per corso per gli utenti attivi con dettaglio gender e completamento
-      final allCourses = await isar.courses.where().findAll();
-      final Map<int, Course> coursesMap = {for (final c in allCourses) c.id: c};
+      final Map<int, String> statCourseNames = {};
+      final Map<int, String> statCourseShorts = {};
+      for (final s in validStats) {
+        final cId = s.idCorso;
+        if (cId != null && cId > 0) {
+          if (s.nomeCorso?.trim().isNotEmpty == true) {
+            statCourseNames[cId] = s.nomeCorso!.trim();
+          } else if (s.shorthNomeCorso?.trim().isNotEmpty == true) {
+            statCourseNames.putIfAbsent(cId, () => s.shorthNomeCorso!.trim());
+          }
+          if (s.shorthNomeCorso?.trim().isNotEmpty == true) {
+            statCourseShorts[cId] = s.shorthNomeCorso!.trim();
+          }
+        }
+      }
       final Map<int, CourseActiveStat> courseStatsMap = {};
       final Set<String> processedCourseUser = {};
 
-      for (final item in rawEnrolled) {
+      for (final item in validEnrolled) {
         final uId = item.userId;
         final cId = item.courseId;
         if (uId == null || cId == null) continue;
@@ -383,10 +517,10 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
             ? c!.fullname!.trim()
             : (c?.shortname?.trim().isNotEmpty == true
                 ? c!.shortname!.trim()
-                : 'Corso #$cId');
+                : (statCourseNames[cId] ?? 'Corso #$cId'));
         final cShort = (c?.shortname?.trim().isNotEmpty == true)
             ? c!.shortname!.trim()
-            : 'ID: $cId';
+            : (statCourseShorts[cId] ?? 'ID: $cId');
 
         final stat = courseStatsMap.putIfAbsent(
           cId,
@@ -441,7 +575,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
       // Raggruppamento delle attività per (uId, cId) esattamente come in Vista per Utente
       final Map<String, List<StatMdl>> userCourseStatMap = {};
-      for (final stat in rawStats) {
+      for (final stat in validStats) {
         final uId = stat.userId;
         final cId = stat.idCorso;
         if (uId == null || cId == null) continue;
@@ -464,7 +598,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
       }
 
       final Map<int, Set<int>> userEnrolledCourses = {};
-      for (final item in rawEnrolled) {
+      for (final item in validEnrolled) {
         final uId = item.userId;
         final cId = item.courseId;
         if (uId != null && cId != null && uniqueActiveUsers.contains(uId)) {
@@ -518,12 +652,12 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
             ? rawLang.trim().toUpperCase()
             : 'N.D.';
 
-        // Corsi associati all'utente (iscritti o con attività)
+        // Corsi associati all'utente (iscritti o con attività), escludendo i corsi in blacklist
         final userCourses = <int>{
           ...?userEnrolledCourses[uId],
           for (final key in userCourseStatMap.keys)
             if (key.startsWith('$uId-')) int.tryParse(key.substring('$uId-'.length)) ?? 0,
-        }..remove(0);
+        }..remove(0)..removeWhere((cId) => excludedCourseIds.contains(cId));
 
         Set<int> targetCourses;
         Set<String> types;
@@ -614,7 +748,11 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
         final coursesNames = targetCourses.map((cId) {
           final c = coursesMap[cId];
-          return (c?.fullname?.trim().isNotEmpty == true) ? c!.fullname!.trim() : 'Corso #$cId';
+          return (c?.fullname?.trim().isNotEmpty == true)
+              ? c!.fullname!.trim()
+              : (c?.shortname?.trim().isNotEmpty == true
+                  ? c!.shortname!.trim()
+                  : (statCourseNames[cId] ?? 'Corso #$cId'));
         }).join(', ');
 
         activeUserDetailsList.add(ActiveUserDetailExportItem(
@@ -635,6 +773,12 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           _participatingUsersCount = uniqueParticipatingUsers.length;
           _activeUsersCount = uniqueActiveUsers.length;
           _enrolledUsersCount = uniqueEnrolledUsers.length;
+          _totalEnrollmentsCount = totalEnrollments;
+          _enrollmentMaleCount = enrMale;
+          _enrollmentFemaleCount = enrFemale;
+          _enrollmentUnclassifiedCount = enrUnclass;
+          _enrollmentLangCounts = enrLangMap;
+          _enrollmentGenderLangCounts = enrGenderLangMap;
           _activeMaleCount = maleCount;
           _activeFemaleCount = femaleCount;
           _activeUnclassifiedCount = unclassifiedCount;
@@ -734,6 +878,10 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                     }
                   },
                 ),
+                const SizedBox(height: 28),
+
+                // Grafico Totale Iscrizioni (Tutti i corsi: Genere e Lingua)
+                _buildTotalEnrollmentsChart(),
                 const SizedBox(height: 28),
 
                 // Grafico Distribuzione Gender Utenti Attivi
@@ -1118,6 +1266,346 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           ),
         ),
       ),
+    );
+  }
+
+  // --- Grafico Distribuzione Totale Iscrizioni (Tutti i corsi, multi-iscrizioni per utente) ---
+  Widget _buildTotalEnrollmentsChart() {
+    final total = _totalEnrollmentsCount;
+    final malePct = total > 0 ? (_enrollmentMaleCount / total) : 0.0;
+    final femalePct = total > 0 ? (_enrollmentFemaleCount / total) : 0.0;
+    final unclassPct = total > 0 ? (_enrollmentUnclassifiedCount / total) : 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(4),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header del Grafico
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7).withAlpha(16),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.auto_stories_rounded, color: Color(0xFF0284C7), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'DISTRIBUZIONE TOTALE ISCRIZIONI (TUTTI I CORSI)',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.6,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Volume complessivo iscrizioni (conteggio unico per corso, multi-corso tra corsi diversi, corsi non esclusi)',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F9FF),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFBAE6FD)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.school_outlined, size: 14, color: Color(0xFF0284C7)),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$total Iscrizioni Totali',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0284C7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 20),
+
+          // Donut Chart + Breakdown Genere
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 660;
+
+              final donutWidget = Center(
+                child: SizedBox(
+                  width: 190,
+                  height: 190,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(
+                        size: const Size(190, 190),
+                        painter: _GenderDonutPainter(
+                          male: _enrollmentMaleCount,
+                          female: _enrollmentFemaleCount,
+                          unclassified: _enrollmentUnclassifiedCount,
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$total',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Iscrizioni',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+
+              final breakdownWidget = Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildGenderBar(
+                    label: 'Iscrizioni Uomini (M)',
+                    count: _enrollmentMaleCount,
+                    percentage: malePct,
+                    color: const Color(0xFF2563EB),
+                    bgColor: const Color(0xFFEFF6FF),
+                    icon: Icons.male_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGenderBar(
+                    label: 'Iscrizioni Donne (F)',
+                    count: _enrollmentFemaleCount,
+                    percentage: femalePct,
+                    color: const Color(0xFFE11D48),
+                    bgColor: const Color(0xFFFFF1F2),
+                    icon: Icons.female_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGenderBar(
+                    label: 'Iscrizioni Non classificate',
+                    count: _enrollmentUnclassifiedCount,
+                    percentage: unclassPct,
+                    color: const Color(0xFF64748B),
+                    bgColor: const Color(0xFFF8FAFC),
+                    icon: Icons.help_outline_rounded,
+                  ),
+                ],
+              );
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 16),
+                    donutWidget,
+                    const SizedBox(width: 36),
+                    Expanded(child: breakdownWidget),
+                    const SizedBox(width: 16),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  donutWidget,
+                  const SizedBox(height: 24),
+                  breakdownWidget,
+                ],
+              );
+            },
+          ),
+
+          // Sezione Lingua Iscrizioni
+          _buildTotalEnrollmentsLanguageSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTotalEnrollmentsLanguageSection() {
+    if (_enrollmentLangCounts.isEmpty) return const SizedBox.shrink();
+
+    final total = _totalEnrollmentsCount;
+    final sortedLangs = _enrollmentLangCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 22),
+        const Divider(height: 1, color: Color(0xFFF1F5F9)),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0EA5E9).withAlpha(18),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.language_rounded, color: Color(0xFF0284C7), size: 18),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'DISTRIBUZIONE ISCRIZIONI PER LINGUA',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFBAE6FD)),
+              ),
+              child: Text(
+                '${sortedLangs.length} lingu${sortedLangs.length == 1 ? 'a' : 'e'}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0284C7),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: sortedLangs.map((entry) {
+            final lang = entry.key;
+            final count = entry.value;
+            final pct = total > 0 ? (count / total * 100) : 0.0;
+            final genderBreakdown = _enrollmentGenderLangCounts[lang] ?? {};
+            final mCount = genderBreakdown['M'] ?? 0;
+            final fCount = genderBreakdown['F'] ?? 0;
+            final ncCount = genderBreakdown['N.C.'] ?? 0;
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7).withAlpha(16),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          lang,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0284C7),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$count iscrizion${count == 1 ? 'e' : 'i'}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '(${pct.toStringAsFixed(1)}%)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildMiniGenderTag('M', mCount, const Color(0xFF2563EB)),
+                      const SizedBox(width: 6),
+                      _buildMiniGenderTag('F', fCount, const Color(0xFFE11D48)),
+                      if (ncCount > 0) ...[
+                        const SizedBox(width: 6),
+                        _buildMiniGenderTag('N.C.', ncCount, const Color(0xFF64748B)),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 

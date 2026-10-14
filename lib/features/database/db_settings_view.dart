@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/db/isar_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../exclusions/models/course_exclusion.dart';
 import '../settings/models/app_settings.dart';
 import '../settings/providers/app_settings_provider.dart';
 import '../sync/models/badge_user.dart';
@@ -30,6 +31,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   int _mergeWebexUsersCount = 0;
   int _statMdlCount = 0;
   int _userCourseEnrolledCount = 0;
+  int _courseExclusionsCount = 0;
   int _settingsCount = 0;
   bool _isLoading = false;
   StreamSubscription<void>? _usersSub;
@@ -40,6 +42,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   StreamSubscription<void>? _mergeWebexUsersSub;
   StreamSubscription<void>? _statMdlSub;
   StreamSubscription<void>? _userCourseEnrolledSub;
+  StreamSubscription<void>? _courseExclusionsSub;
   StreamSubscription<void>? _settingsSub;
 
   @override
@@ -71,6 +74,9 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _userCourseEnrolledSub = isar.userCourseEnrolleds.watchLazy().listen((_) {
       _refreshCounts();
     });
+    _courseExclusionsSub = isar.courseExclusions.watchLazy().listen((_) {
+      _refreshCounts();
+    });
     _settingsSub = isar.appSettings.watchLazy().listen((_) {
       _refreshCounts();
     });
@@ -86,6 +92,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _mergeWebexUsersSub?.cancel();
     _statMdlSub?.cancel();
     _userCourseEnrolledSub?.cancel();
+    _courseExclusionsSub?.cancel();
     _settingsSub?.cancel();
     super.dispose();
   }
@@ -100,6 +107,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     final mergeWebexUsers = await isar.mergeWebexUsers.count();
     final statMdl = await isar.statMdls.count();
     final userCourseEnrolled = await isar.userCourseEnrolleds.count();
+    final courseExclusions = await isar.courseExclusions.count();
     final settings = await isar.appSettings.count();
     if (mounted) {
       setState(() {
@@ -111,6 +119,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         _mergeWebexUsersCount = mergeWebexUsers;
         _statMdlCount = statMdl;
         _userCourseEnrolledCount = userCourseEnrolled;
+        _courseExclusionsCount = courseExclusions;
         _settingsCount = settings;
       });
     }
@@ -325,10 +334,32 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     }
   }
 
+  Future<void> _clearCourseExclusionsTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Esclusioni Corsi?',
+      content: 'Tutti gli ID dei corsi esclusi memorizzati nel database locale verranno eliminati permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.courseExclusions.clear();
+      });
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Esclusioni Corsi svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _clearAllTables() async {
     final confirmed = await _showConfirmDialog(
       title: 'Eseguire Reset Completo del Database?',
-      content: 'Questa operazione svuoterà TUTTE le tabelle (Users, Categories, Courses, Badges Users, Course Info, Merge Webex Users, Stat Moduli e AppSettings). Tutti i dati locali andranno persi.',
+      content: 'Questa operazione svuoterà TUTTE le tabelle (Users, Categories, Courses, Badges Users, Course Info, Merge Webex Users, Stat Moduli, Iscrizioni, Esclusioni e AppSettings). Tutti i dati locali andranno persi.',
       isDestructive: true,
     );
     if (!confirmed) return;
@@ -344,6 +375,8 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         await isar.courseInfos.clear();
         await isar.mergeWebexUsers.clear();
         await isar.statMdls.clear();
+        await isar.userCourseEnrolleds.clear();
+        await isar.courseExclusions.clear();
         await isar.appSettings.clear();
         await isar.appSettings.put(AppSettings());
       });
@@ -424,7 +457,16 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     // Riascolta eventuali cambi in AppSettings (es. reset o sync completati)
     ref.listen(appSettingsProvider, (_, __) => _refreshCounts());
 
-    final totalRecords = _usersCount + _categoriesCount + _coursesCount + _badgesUsersCount + _settingsCount;
+    final totalRecords = _usersCount +
+        _categoriesCount +
+        _coursesCount +
+        _badgesUsersCount +
+        _courseInfoCount +
+        _mergeWebexUsersCount +
+        _statMdlCount +
+        _userCourseEnrolledCount +
+        _courseExclusionsCount +
+        _settingsCount;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -471,7 +513,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '3 tabelle gestite • $totalRecords record totali memorizzati',
+                                '10 tabelle gestite • $totalRecords record totali memorizzati',
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -622,6 +664,20 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
           actionColor: Colors.red.shade700,
           actionBorderColor: Colors.red.shade200,
           onAction: _clearUserCourseEnrolledTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.block_flipped,
+          iconColor: const Color(0xFFF97316),
+          name: 'Esclusioni Corsi',
+          schema: 'CourseExclusionSchema',
+          count: _courseExclusionsCount,
+          description: 'ID dei corsi formativi esclusi dai conteggi e dalla reportistica',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearCourseExclusionsTable,
         ),
         const SizedBox(height: 12),
         _buildTableListItem(

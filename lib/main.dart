@@ -12,6 +12,7 @@ import 'core/services/proxy_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/settings/models/app_settings.dart';
 import 'features/settings/providers/app_settings_provider.dart';
+import 'features/exclusions/models/course_exclusion.dart';
 import 'features/sync/models/badge_user.dart';
 import 'features/sync/models/category.dart';
 import 'features/sync/models/course.dart';
@@ -64,6 +65,7 @@ void main() async {
       MergeWebexUserSchema,
       StatMdlSchema,
       UserCourseEnrolledSchema,
+      CourseExclusionSchema,
     ],
     directory: dirPath ?? '',
     inspector: !kIsWeb,
@@ -131,6 +133,14 @@ void main() async {
   } catch (e) {
     debugPrint('[Isar] Disallineamento schema UserCourseEnrolled: $e. Pulizia tabella user_course_enrolled.');
     await isar.writeTxn(() async => await isar.userCourseEnrolleds.clear());
+  }
+
+  // Verifica difensiva su CourseExclusionSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.courseExclusions.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema CourseExclusion: $e. Pulizia tabella course_exclusions.');
+    await isar.writeTxn(() async => await isar.courseExclusions.clear());
   }
 
   // 3. Inizializzazione Proxy Service con le impostazioni persistite

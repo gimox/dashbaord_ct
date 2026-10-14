@@ -9,7 +9,7 @@ class UserCourseStatsExcelExporter {
   /// Esporta la lista di statistiche aggregate per utente e corso in formato Excel (.xlsx)
   static Future<String?> exportUserCourseStats(List<UserCourseStatGroup> items) async {
     final excel = Excel.createExcel();
-    const sheetName = 'Vista per Utente';
+    const sheetName = 'Progresso';
 
     final defaultSheet = excel.getDefaultSheet() ?? 'Sheet1';
     excel.rename(defaultSheet, sheetName);
@@ -149,10 +149,10 @@ class UserCourseStatsExcelExporter {
     final uint8List = Uint8List.fromList(fileBytes);
 
     final now = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
-    final fileName = 'CyberProTrain_VistaUtente_$now.xlsx';
+    final fileName = 'CyberProTrain_Progresso_$now.xlsx';
 
     final savedPath = await FilePicker.saveFile(
-      dialogTitle: 'Salva esportazione Excel Vista per Utente',
+      dialogTitle: 'Salva esportazione Excel Progresso',
       fileName: fileName,
       type: FileType.custom,
       allowedExtensions: ['xlsx'],
