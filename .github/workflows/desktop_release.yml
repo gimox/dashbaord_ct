@@ -77,7 +77,15 @@ jobs:
             }
           }
           iscc windows/installer/inno_setup.iss
-          Move-Item CyberProTrain_Admin_Setup.exe App_Windows_Setup.exe
+          if (-not (Test-Path "App_Windows_Setup.exe")) {
+            if (Test-Path "windows\installer\App_Windows_Setup.exe") {
+              Move-Item "windows\installer\App_Windows_Setup.exe" "App_Windows_Setup.exe"
+            } elseif (Test-Path "CyberProTrain_Admin_Setup.exe") {
+              Move-Item "CyberProTrain_Admin_Setup.exe" "App_Windows_Setup.exe"
+            } elseif (Test-Path "windows\installer\CyberProTrain_Admin_Setup.exe") {
+              Move-Item "windows\installer\CyberProTrain_Admin_Setup.exe" "App_Windows_Setup.exe"
+            }
+          }
 
       - name: Upload Windows ZIP Artifact
         uses: actions/upload-artifact@v4
