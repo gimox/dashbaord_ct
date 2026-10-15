@@ -130,7 +130,7 @@ class User {
 
   static DateTime? _parseDateOfBirth(List<CustomField>? customfields, dynamic directField) {
     if (directField != null) {
-      final parsed = _tryParseDobString(directField.toString());
+      final parsed = tryParseDobString(directField.toString());
       if (parsed != null) return parsed;
     }
 
@@ -146,12 +146,12 @@ class User {
             shortname.contains('dob')) {
           final valStr = cf.value?.trim();
           if (valStr != null && valStr.isNotEmpty) {
-            final parsed = _tryParseDobString(valStr);
+            final parsed = tryParseDobString(valStr);
             if (parsed != null) return parsed;
           }
           final dispStr = cf.displayvalue?.trim();
           if (dispStr != null && dispStr.isNotEmpty) {
-            final parsed = _tryParseDobString(dispStr);
+            final parsed = tryParseDobString(dispStr);
             if (parsed != null) return parsed;
           }
         }
@@ -160,7 +160,7 @@ class User {
     return null;
   }
 
-  static DateTime? _tryParseDobString(String str) {
+  static DateTime? tryParseDobString(String str) {
     final trimmed = str.trim();
     if (trimmed.isEmpty) return null;
 

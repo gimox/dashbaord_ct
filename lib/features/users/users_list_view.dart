@@ -6,7 +6,19 @@ import 'package:isar_community/isar.dart';
 import '../../core/db/isar_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../sync/models/user.dart';
+import '../sync/models/course.dart';
+import '../exclusions/models/course_exclusion.dart';
+import '../sync/models/user_course_enrolled.dart';
+import '../sync/models/stat_mdl.dart';
 import 'services/user_excel_exporter.dart';
+
+enum UserCategoryFilter {
+  all,
+  active,
+  enrolled,
+  participating,
+  other,
+}
 
 class UsersListView extends ConsumerStatefulWidget {
   const UsersListView({super.key});
@@ -22,22 +34,44 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
   List<User> _allUsers = [];
   List<User> _filteredUsers = [];
   bool _isLoading = true;
+
+  Set<int> _activeUserIds = {};
+  Set<int> _enrolledUserIds = {};
+  Set<int> _participatingUserIds = {};
+  UserCategoryFilter _selectedCategory = UserCategoryFilter.all;
+
   StreamSubscription<void>? _usersSub;
+  StreamSubscription<void>? _enrolledSub;
+  StreamSubscription<void>? _statMdlSub;
+  StreamSubscription<void>? _exclusionsSub;
+  StreamSubscription<void>? _coursesSub;
+
+  int get _otherUsersCount {
+    return _allUsers
+        .where((u) => !_enrolledUserIds.contains(u.id) && !_participatingUserIds.contains(u.id))
+        .length;
+  }
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
     final isar = ref.read(isarProvider);
-    _usersSub = isar.users.watchLazy().listen((_) {
-      _loadUsers();
-    });
+    _usersSub = isar.users.watchLazy().listen((_) => _loadUsers());
+    _enrolledSub = isar.userCourseEnrolleds.watchLazy().listen((_) => _loadUsers());
+    _statMdlSub = isar.statMdls.watchLazy().listen((_) => _loadUsers());
+    _exclusionsSub = isar.courseExclusions.watchLazy().listen((_) => _loadUsers());
+    _coursesSub = isar.courses.watchLazy().listen((_) => _loadUsers());
     _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
     _usersSub?.cancel();
+    _enrolledSub?.cancel();
+    _statMdlSub?.cancel();
+    _exclusionsSub?.cancel();
+    _coursesSub?.cancel();
     _searchController.dispose();
     _horizontalScrollController.dispose();
     _verticalScrollController.dispose();
@@ -47,18 +81,99 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
   Future<void> _loadUsers() async {
     final isar = ref.read(isarProvider);
     List<User> users;
+    final Set<int> enrolledIds = {};
+    final Set<int> activeIds = {};
+    final Set<int> participatingIds = {};
+
     try {
       users = await isar.users.where().findAll();
+
+      final exclusions = await isar.courseExclusions.where().findAll();
+      final allCourses = await isar.courses.where().findAll();
+      final excludedCourseIds = <int>{};
+      final Map<int, int> prefixToCourseId = {};
+      final Map<int, int> courseIdToPrefix = {};
+
+      for (final c in allCourses) {
+        if (c.shortname != null) {
+          final match = RegExp(r'^(\d+)').firstMatch(c.shortname!.trim());
+          if (match != null) {
+            final prefix = int.tryParse(match.group(1)!);
+            if (prefix != null) {
+              prefixToCourseId[prefix] = c.id;
+              courseIdToPrefix[c.id] = prefix;
+            }
+          }
+        }
+      }
+
+      for (final e in exclusions) {
+        excludedCourseIds.add(e.courseId);
+        if (prefixToCourseId.containsKey(e.courseId)) {
+          excludedCourseIds.add(prefixToCourseId[e.courseId]!);
+        }
+        if (courseIdToPrefix.containsKey(e.courseId)) {
+          excludedCourseIds.add(courseIdToPrefix[e.courseId]!);
+        }
+      }
+
+      final allEnrolled = await isar.userCourseEnrolleds.where().findAll();
+      for (final e in allEnrolled) {
+        final cId = e.courseId;
+        if (cId != null && !excludedCourseIds.contains(cId)) {
+          if (e.userId != null && e.userId! > 0) {
+            enrolledIds.add(e.userId!);
+          }
+        }
+      }
+
+      final usernameToIdMap = <String, int>{};
+      final emailToIdMap = <String, int>{};
+      for (final u in users) {
+        if (u.username != null && u.username!.trim().isNotEmpty) {
+          usernameToIdMap[u.username!.trim().toLowerCase()] = u.id;
+        }
+        if (u.email != null && u.email!.trim().isNotEmpty) {
+          emailToIdMap[u.email!.trim().toLowerCase()] = u.id;
+        }
+      }
+
+      final allStats = await isar.statMdls.where().findAll();
+      for (final s in allStats) {
+        final cId = s.idCorso;
+        if (cId != null && !excludedCourseIds.contains(cId)) {
+          final uId = (s.userId != null && s.userId! > 0)
+              ? s.userId!
+              : (usernameToIdMap[s.username?.trim().toLowerCase()] ??
+                 emailToIdMap[s.email?.trim().toLowerCase()]);
+          if (uId != null && uId > 0) {
+            participatingIds.add(uId);
+            if (allEnrolled.isEmpty) {
+              enrolledIds.add(uId);
+            }
+          }
+        }
+      }
+
+      for (final u in users) {
+        final isEnrolled = enrolledIds.contains(u.id);
+        final hasAccess = (u.firstaccess != null && u.firstaccess! > 0) ||
+            (u.lastaccess != null && u.lastaccess! > 0);
+        if (isEnrolled && hasAccess) {
+          activeIds.add(u.id);
+        }
+      }
     } catch (e) {
-      debugPrint('[UsersListView] Errore lettura Isar (disallineamento schema): $e');
-      try {
-        await isar.writeTxn(() async => await isar.users.clear());
-      } catch (_) {}
+      debugPrint('[UsersListView] Errore lettura Isar: $e');
       users = [];
     }
+
     if (mounted) {
       setState(() {
         _allUsers = users;
+        _enrolledUserIds = enrolledIds;
+        _activeUserIds = activeIds;
+        _participatingUserIds = participatingIds;
         _isLoading = false;
         _applyFilter();
       });
@@ -90,6 +205,7 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
 
   int get _activeFiltersCount {
     int count = 0;
+    if (_selectedCategory != UserCategoryFilter.all) count++;
     if (_filterActive != null) count++;
     if (_filterConfirmed != null) count++;
     if (_selectedOrgs.isNotEmpty) count++;
@@ -156,6 +272,7 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
 
   void _resetAdvancedFilters() {
     setState(() {
+      _selectedCategory = UserCategoryFilter.all;
       _filterActive = null;
       _filterConfirmed = null;
       _selectedOrgs.clear();
@@ -200,6 +317,26 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
   void _applyFilter() {
     final query = _searchController.text.trim().toLowerCase();
     _filteredUsers = _allUsers.where((u) {
+      // 0. Filtro Popolazione didattica (Attivi, Iscritti, Partecipanti, Tutti gli altri)
+      switch (_selectedCategory) {
+        case UserCategoryFilter.active:
+          if (!_activeUserIds.contains(u.id)) return false;
+          break;
+        case UserCategoryFilter.enrolled:
+          if (!_enrolledUserIds.contains(u.id)) return false;
+          break;
+        case UserCategoryFilter.participating:
+          if (!_participatingUserIds.contains(u.id)) return false;
+          break;
+        case UserCategoryFilter.other:
+          if (_enrolledUserIds.contains(u.id) || _participatingUserIds.contains(u.id)) {
+            return false;
+          }
+          break;
+        case UserCategoryFilter.all:
+          break;
+      }
+
       // 1. Ricerca generale
       if (query.isNotEmpty) {
         final username = (u.username ?? '').toLowerCase();
@@ -799,6 +936,12 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_allUsers.isNotEmpty && _activeUserIds.isEmpty && !_isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadUsers();
+      });
+    }
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       floatingActionButton: _isAdvancedFiltersOpen
@@ -850,15 +993,24 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
                                     hintText: 'Cerca per username, nome, cognome, email o dipartimento...',
                                     hintStyle: TextStyle(fontSize: 14, color: Colors.grey.shade500),
                                     border: InputBorder.none,
-                                    suffixIcon: _searchController.text.isNotEmpty
-                                        ? IconButton(
+                                    suffixIcon: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (_searchController.text.isNotEmpty)
+                                          IconButton(
                                             icon: const Icon(Icons.clear, size: 20),
                                             onPressed: () {
                                               _searchController.clear();
                                               _applyFilter();
                                             },
-                                          )
-                                        : null,
+                                          ),
+                                        IconButton(
+                                          icon: const Icon(Icons.refresh_rounded, size: 20, color: AppTheme.primaryBlue),
+                                          tooltip: 'Ricarica dati utenti',
+                                          onPressed: _loadUsers,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -915,6 +1067,11 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 12),
+
+                      // Filtro rapido per popolazione didattica (Tutti, Attivi, Iscritti, Partecipanti, Tutti gli altri)
+                      _buildCategoryQuickFilters(),
+                      const SizedBox(height: 10),
 
                       // Chips filtri attivi sotto la barra di ricerca
                       _buildActiveFiltersChips(),
@@ -959,6 +1116,7 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
   Widget _buildActiveFiltersChips() {
     final hasSearch = _searchController.text.trim().isNotEmpty;
     final totalActive = (hasSearch ? 1 : 0) +
+        (_selectedCategory != UserCategoryFilter.all ? 1 : 0) +
         (_filterActive != null ? 1 : 0) +
         (_filterConfirmed != null ? 1 : 0) +
         _selectedOrgs.length +
@@ -989,6 +1147,19 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
               ),
             ],
           ),
+
+          // 0. Categoria / Popolazione didattica
+          if (_selectedCategory != UserCategoryFilter.all)
+            _buildActiveChip(
+              label: 'Popolazione: ${_getCategoryLabel(_selectedCategory)}',
+              color: _getCategoryColor(_selectedCategory),
+              onDeleted: () {
+                setState(() {
+                  _selectedCategory = UserCategoryFilter.all;
+                  _applyFilter();
+                });
+              },
+            ),
 
           // 1. Ricerca testuale
           if (hasSearch)
@@ -1140,22 +1311,25 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
   Widget _buildActiveChip({
     required String label,
     required VoidCallback onDeleted,
-    MaterialColor? color,
+    Color? color,
   }) {
     final baseColor = color ?? Colors.blue;
+    final Color bgColor = baseColor is MaterialColor ? baseColor.shade50 : baseColor.withValues(alpha: 0.1);
+    final Color borderColor = baseColor is MaterialColor ? baseColor.shade200 : baseColor.withValues(alpha: 0.35);
+    final Color textColor = baseColor is MaterialColor ? baseColor.shade800 : baseColor;
     return Chip(
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.compact,
       padding: EdgeInsets.zero,
       labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-      backgroundColor: baseColor.shade50,
-      side: BorderSide(color: baseColor.shade200),
+      backgroundColor: bgColor,
+      side: BorderSide(color: borderColor),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       label: Text(
         label,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: baseColor.shade800),
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
       ),
-      deleteIcon: Icon(Icons.close_rounded, size: 14, color: baseColor.shade800),
+      deleteIcon: Icon(Icons.close_rounded, size: 14, color: textColor),
       onDeleted: onDeleted,
     );
   }
@@ -1298,6 +1472,10 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 0. Categoria / Popolazione didattica
+                  _buildDrawerCategoryFilter(),
+                  const SizedBox(height: 16),
+
                   // 1. Account Attivo (True / False)
                   _buildBooleanStatusFilter(
                     label: 'Account Attivo',
@@ -1514,6 +1692,237 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
           ),
         ],
       ),
+    );
+  }
+
+  String _getCategoryLabel(UserCategoryFilter cat) {
+    switch (cat) {
+      case UserCategoryFilter.active:
+        return 'Attivi';
+      case UserCategoryFilter.enrolled:
+        return 'Iscritti';
+      case UserCategoryFilter.participating:
+        return 'Partecipanti';
+      case UserCategoryFilter.other:
+        return 'Tutti gli altri';
+      case UserCategoryFilter.all:
+        return 'Tutti';
+    }
+  }
+
+  Color _getCategoryColor(UserCategoryFilter cat) {
+    switch (cat) {
+      case UserCategoryFilter.active:
+        return const Color(0xFF16A34A);
+      case UserCategoryFilter.enrolled:
+        return const Color(0xFF0284C7);
+      case UserCategoryFilter.participating:
+        return const Color(0xFF8B5CF6);
+      case UserCategoryFilter.other:
+        return const Color(0xFF64748B);
+      case UserCategoryFilter.all:
+        return AppTheme.primaryBlue;
+    }
+  }
+
+  Widget _buildCategoryQuickFilters() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildCategoryFilterChip(
+            category: UserCategoryFilter.all,
+            label: 'Tutti',
+            count: _allUsers.length,
+            icon: Icons.people_outline_rounded,
+            activeColor: AppTheme.primaryBlue,
+          ),
+          const SizedBox(width: 8),
+          _buildCategoryFilterChip(
+            category: UserCategoryFilter.active,
+            label: 'Attivi',
+            count: _activeUserIds.length,
+            icon: Icons.check_circle_outline_rounded,
+            activeColor: const Color(0xFF16A34A),
+          ),
+          const SizedBox(width: 8),
+          _buildCategoryFilterChip(
+            category: UserCategoryFilter.enrolled,
+            label: 'Iscritti',
+            count: _enrolledUserIds.length,
+            icon: Icons.how_to_reg_rounded,
+            activeColor: const Color(0xFF0284C7),
+          ),
+          const SizedBox(width: 8),
+          _buildCategoryFilterChip(
+            category: UserCategoryFilter.participating,
+            label: 'Partecipanti',
+            count: _participatingUserIds.length,
+            icon: Icons.school_rounded,
+            activeColor: const Color(0xFF8B5CF6),
+          ),
+          const SizedBox(width: 8),
+          _buildCategoryFilterChip(
+            category: UserCategoryFilter.other,
+            label: 'Tutti gli altri',
+            count: _otherUsersCount,
+            icon: Icons.person_off_outlined,
+            activeColor: const Color(0xFF64748B),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryFilterChip({
+    required UserCategoryFilter category,
+    required String label,
+    required int count,
+    required IconData icon,
+    required Color activeColor,
+  }) {
+    final isSelected = _selectedCategory == category;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedCategory = category;
+          _applyFilter();
+        });
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? activeColor : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? activeColor : Colors.grey.shade300,
+            width: isSelected ? 1.5 : 1.0,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: activeColor.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: isSelected ? Colors.white : Colors.grey.shade700,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? Colors.white : const Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white.withValues(alpha: 0.25)
+                    : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : Colors.grey.shade700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerCategoryFilter() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Popolazione Didattica',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
+            ),
+            if (_selectedCategory != UserCategoryFilter.all)
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _selectedCategory = UserCategoryFilter.all;
+                    _applyFilter();
+                  });
+                },
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Text(
+                    'Azzera',
+                    style: TextStyle(fontSize: 11, color: Colors.red.shade700, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            _buildDrawerCategoryChip(UserCategoryFilter.all, 'Tutti (${_allUsers.length})'),
+            _buildDrawerCategoryChip(UserCategoryFilter.active, 'Attivi (${_activeUserIds.length})'),
+            _buildDrawerCategoryChip(UserCategoryFilter.enrolled, 'Iscritti (${_enrolledUserIds.length})'),
+            _buildDrawerCategoryChip(UserCategoryFilter.participating, 'Partecipanti (${_participatingUserIds.length})'),
+            _buildDrawerCategoryChip(UserCategoryFilter.other, 'Tutti gli altri ($_otherUsersCount)'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDrawerCategoryChip(UserCategoryFilter cat, String label) {
+    final isSelected = _selectedCategory == cat;
+    final activeColor = _getCategoryColor(cat);
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          setState(() {
+            _selectedCategory = cat;
+            _applyFilter();
+          });
+        }
+      },
+      selectedColor: activeColor,
+      labelStyle: TextStyle(
+        fontSize: 11,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        color: isSelected ? Colors.white : Colors.grey.shade800,
+      ),
+      backgroundColor: Colors.grey.shade100,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: isSelected ? activeColor : Colors.grey.shade300),
+      ),
+      showCheckmark: false,
     );
   }
 
@@ -1982,9 +2391,66 @@ class _UsersListViewState extends ConsumerState<UsersListView> {
                                             color: Color(0xFF1E293B),
                                           ),
                                         ),
-                                        Text(
-                                          '@${user.username ?? "-"}',
-                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              '@${user.username ?? "-"}',
+                                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                                            ),
+                                            if (_activeUserIds.contains(user.id)) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF16A34A).withValues(alpha: 0.1),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Text(
+                                                  'Attivo',
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Color(0xFF16A34A),
+                                                  ),
+                                                ),
+                                              ),
+                                            ] else if (_enrolledUserIds.contains(user.id)) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Text(
+                                                  'Iscritto',
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Color(0xFF0284C7),
+                                                  ),
+                                                ),
+                                              ),
+                                            ] else if (_participatingUserIds.contains(user.id)) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Text(
+                                                  'Partecipante',
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Color(0xFF8B5CF6),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ],
                                     ),

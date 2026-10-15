@@ -11,8 +11,12 @@ import '../sync/models/user_course_enrolled.dart';
 import '../sync/models/course.dart';
 import '../exclusions/models/course_exclusion.dart';
 import 'models/course_active_stat.dart';
+import 'models/partner_active_stat.dart';
+import 'models/age_active_stat.dart';
 import 'services/active_users_progress_excel_exporter.dart';
 import 'services/course_active_stats_excel_exporter.dart';
+import 'services/partner_active_stats_excel_exporter.dart';
+import 'services/age_active_stats_excel_exporter.dart';
 
 class HomeDashboardView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToSync;
@@ -78,6 +82,13 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   List<CourseActiveStat> _courseActiveStats = [];
   bool _showAllCourses = false;
   bool _isExporting = false;
+
+  List<PartnerActiveStat> _partnerActiveStats = [];
+  bool _showAllPartners = false;
+  bool _isExportingPartners = false;
+
+  List<AgeActiveStat> _ageActiveStats = [];
+  bool _isExportingAge = false;
   StreamSubscription<void>? _statMdlSub;
   StreamSubscription<void>? _enrolledSub;
   StreamSubscription<void>? _usersSub;
@@ -114,6 +125,71 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     _coursesSub?.cancel();
     _exclusionsSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _exportPartnersToExcel() async {
+    if (_partnerActiveStats.isEmpty || _isExportingPartners) return;
+    setState(() => _isExportingPartners = true);
+    try {
+      final path = await PartnerActiveStatsExcelExporter.exportStats(_partnerActiveStats);
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('File esportato con successo in: $path'),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'esportazione Excel Partner: $e'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingPartners = false);
+      }
+    }
+  }
+
+  Future<void> _exportAgeToExcel() async {
+    if (_ageActiveStats.isEmpty || _isExportingAge) return;
+    setState(() => _isExportingAge = true);
+    try {
+      final path = await AgeActiveStatsExcelExporter.exportStats(
+        _ageActiveStats,
+        totalActiveUsers: _activeUsersCount,
+      );
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('File esportato con successo in: $path'),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'esportazione Excel Età: $e'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingAge = false);
+      }
+    }
   }
 
   Future<void> _exportToExcel() async {
@@ -257,6 +333,29 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     return null;
   }
 
+  String? _getPartnerRef(User u) {
+    if (u.customfields == null) return null;
+    for (final cf in u.customfields!) {
+      final name = (cf.name ?? '').toLowerCase();
+      final shortname = (cf.shortname ?? '').toLowerCase();
+      if (shortname == 'partner_ref' ||
+          name == 'partner reference' ||
+          shortname.contains('partner') ||
+          shortname.contains('partener') ||
+          name.contains('partner') ||
+          name.contains('partener')) {
+        if (shortname == 'qualification' && !shortname.contains('partner')) continue;
+        final val = cf.displayvalue?.trim().isNotEmpty == true
+            ? cf.displayvalue!.trim()
+            : cf.value?.trim().isNotEmpty == true
+                ? cf.value!.trim()
+                : null;
+        if (val != null && val.isNotEmpty) return val;
+      }
+    }
+    return null;
+  }
+
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
     try {
@@ -335,6 +434,14 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
       final allUsers = await isar.users.where().findAll();
       final Map<int, User> usersMap = {for (final u in allUsers) u.id: u};
+      final Map<String, int> usernameToIdMap = {
+        for (final u in allUsers)
+          if (u.username?.trim().isNotEmpty == true) u.username!.trim().toLowerCase(): u.id,
+      };
+      final Map<String, int> emailToIdMap = {
+        for (final u in allUsers)
+          if (u.email?.trim().isNotEmpty == true) u.email!.trim().toLowerCase(): u.id,
+      };
 
       // Deduplica sullo stesso corso per lo stesso utente (ogni coppia corso-utente conta al massimo 1 volta)
       final Set<String> seenCourseUserEnrollments = {};
@@ -407,57 +514,170 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
       // 3. Conteggio utenti attivi (iscritti a corsi validi con firstaccess > 0) e calcolo distribuzione gender
       final Set<int> uniqueActiveUsers = {};
+      for (final userId in uniqueEnrolledUsers) {
+        final u = usersMap[userId];
+        if (u != null && u.firstaccess != null && u.firstaccess! > 0) {
+          uniqueActiveUsers.add(userId);
+        }
+      }
+
+      // Pre-identificazione utenti attivi che hanno completato almeno un corso non escluso
+      final Set<int> completedActiveUserIds = {};
+      for (final stat in validStats) {
+        final uId = (stat.userId != null && stat.userId! > 0)
+            ? stat.userId!
+            : (usernameToIdMap[stat.username?.trim().toLowerCase()] ??
+               emailToIdMap[stat.email?.trim().toLowerCase()]);
+        if (uId == null || !uniqueActiveUsers.contains(uId)) continue;
+        final st = (stat.statoCompletamentoCorso ?? '').trim().toLowerCase();
+        final isCompleted = st == 'completato' ||
+            stat.dataCompletamentoCorso != null;
+        if (isCompleted) {
+          completedActiveUserIds.add(uId);
+        }
+      }
+
+      final Map<int, String> userDobFromStatsMap = {};
+      for (final stat in validStats) {
+        final uId = (stat.userId != null && stat.userId! > 0)
+            ? stat.userId!
+            : (usernameToIdMap[stat.username?.trim().toLowerCase()] ??
+               emailToIdMap[stat.email?.trim().toLowerCase()]);
+        if (uId != null && !userDobFromStatsMap.containsKey(uId)) {
+          final dob = stat.dateOfBirthCnv ?? stat.dateOfBirth;
+          if (dob != null && dob.trim().isNotEmpty) {
+            userDobFromStatsMap[uId] = dob.trim();
+          }
+        }
+      }
+
       int maleCount = 0;
       int femaleCount = 0;
       int unclassifiedCount = 0;
       final Map<String, int> activeLangMap = {};
       final Map<String, Map<String, int>> activeGenderLangMap = {};
+      final Map<String, PartnerActiveStat> partnerStatsMap = {};
+      final ageStatLe25 = AgeActiveStat(label: 'Età ≤ 25 anni', key: 'le25');
+      final ageStatGt25 = AgeActiveStat(label: 'Età > 25 anni', key: 'gt25');
+      final ageStatUnknown = AgeActiveStat(label: 'Età non specificata', key: 'unknown');
 
-      for (final userId in uniqueEnrolledUsers) {
-        final u = usersMap[userId];
-        if (u != null && u.firstaccess != null && u.firstaccess! > 0) {
-          uniqueActiveUsers.add(userId);
+      for (final userId in uniqueActiveUsers) {
+        final u = usersMap[userId]!;
 
-          final rawGender = _getCustomFieldValue(u, ['gender', 'sesso', 'genere'])?.trim().toLowerCase() ?? '';
-          final String genderKey;
-          if (rawGender == 'm' || rawGender.startsWith('masch') || rawGender == 'male') {
-            maleCount++;
-            genderKey = 'M';
-          } else if (rawGender == 'f' || rawGender.startsWith('femm') || rawGender == 'female') {
-            femaleCount++;
-            genderKey = 'F';
-          } else {
-            unclassifiedCount++;
-            genderKey = 'N.C.';
-          }
-
-          final rawLang = _getCustomFieldValue(u, [
-            'user\'s pref course lang',
-            'pref course lang',
-            'course lang',
-            'course_lang',
-            'prefcourselang',
-            'pref_course_lang',
-            'lang',
-          ]) ?? (u.lang?.trim().isNotEmpty == true ? u.lang!.trim() : null);
-
-          final langCode = (rawLang != null && rawLang.trim().isNotEmpty)
-              ? rawLang.trim().toUpperCase()
-              : 'N.D.';
-
-          activeLangMap[langCode] = (activeLangMap[langCode] ?? 0) + 1;
-          activeGenderLangMap.putIfAbsent(langCode, () => {})[genderKey] =
-              (activeGenderLangMap[langCode]![genderKey] ?? 0) + 1;
+        final rawGender = _getCustomFieldValue(u, ['gender', 'sesso', 'genere'])?.trim().toLowerCase() ?? '';
+        final String genderKey;
+        if (rawGender == 'm' || rawGender.startsWith('masch') || rawGender == 'male') {
+          maleCount++;
+          genderKey = 'M';
+        } else if (rawGender == 'f' || rawGender.startsWith('femm') || rawGender == 'female') {
+          femaleCount++;
+          genderKey = 'F';
+        } else {
+          unclassifiedCount++;
+          genderKey = 'N.C.';
         }
+
+        final rawLang = _getCustomFieldValue(u, [
+          'user\'s pref course lang',
+          'pref course lang',
+          'course lang',
+          'course_lang',
+          'prefcourselang',
+          'pref_course_lang',
+          'lang',
+        ]) ?? (u.lang?.trim().isNotEmpty == true ? u.lang!.trim() : null);
+
+        final langCode = (rawLang != null && rawLang.trim().isNotEmpty)
+            ? rawLang.trim().toUpperCase()
+            : 'N.D.';
+
+        activeLangMap[langCode] = (activeLangMap[langCode] ?? 0) + 1;
+        activeGenderLangMap.putIfAbsent(langCode, () => {})[genderKey] =
+            (activeGenderLangMap[langCode]![genderKey] ?? 0) + 1;
+
+        // Aggregazione Utenti Attivi per Fascia d'Età (<= 25 / > 25)
+        int? userAge = u.age;
+        if (userAge == null) {
+          final statDobStr = userDobFromStatsMap[userId];
+          if (statDobStr != null && statDobStr.isNotEmpty) {
+            final parsed = User.tryParseDobString(statDobStr);
+            if (parsed != null) {
+              final now = DateTime.now();
+              int a = now.year - parsed.year;
+              if (now.month < parsed.month || (now.month == parsed.month && now.day < parsed.day)) {
+                a--;
+              }
+              if (a >= 0 && a <= 115) {
+                userAge = a;
+              }
+            }
+          }
+        }
+
+        final AgeActiveStat targetAgeStat;
+        if (userAge != null) {
+          targetAgeStat = userAge <= 25 ? ageStatLe25 : ageStatGt25;
+        } else {
+          targetAgeStat = ageStatUnknown;
+        }
+
+        if (genderKey == 'M') {
+          targetAgeStat.maleCount++;
+        } else if (genderKey == 'F') {
+          targetAgeStat.femaleCount++;
+        } else {
+          targetAgeStat.unclassifiedCount++;
+        }
+
+        if (completedActiveUserIds.contains(userId)) {
+          targetAgeStat.completedCount++;
+        }
+
+        targetAgeStat.langCounts[langCode] = (targetAgeStat.langCounts[langCode] ?? 0) + 1;
+        targetAgeStat.genderLangCounts.putIfAbsent(langCode, () => {})[genderKey] =
+            (targetAgeStat.genderLangCounts[langCode]![genderKey] ?? 0) + 1;
+
+        // Aggregazione Utenti Attivi per Partner Reference
+        final rawPartner = _getPartnerRef(u);
+        final partnerName = (rawPartner != null && rawPartner.isNotEmpty) ? rawPartner : 'Non specificato';
+        final pStat = partnerStatsMap.putIfAbsent(
+          partnerName,
+          () => PartnerActiveStat(partnerName: partnerName),
+        );
+        if (genderKey == 'M') {
+          pStat.maleCount++;
+        } else if (genderKey == 'F') {
+          pStat.femaleCount++;
+        } else {
+          pStat.unclassifiedCount++;
+        }
+        if (completedActiveUserIds.contains(userId)) {
+          pStat.completedCount++;
+        }
+        pStat.langCounts[langCode] = (pStat.langCounts[langCode] ?? 0) + 1;
+        pStat.genderLangCounts.putIfAbsent(langCode, () => {})[genderKey] =
+            (pStat.genderLangCounts[langCode]![genderKey] ?? 0) + 1;
       }
 
-      // 4. Mappatura tipo corso (sync/async) e completamento corsi da validStats
+      final sortedAgeStats = [
+        ageStatLe25,
+        ageStatGt25,
+        if (ageStatUnknown.total > 0) ageStatUnknown,
+      ];
+
+      final sortedPartnerStats = partnerStatsMap.values.toList()
+        ..sort((a, b) => b.total.compareTo(a.total));
+
+      // 4. Mappatura tipo corso (sync/async) e completamento corsi da validStats (1 completamento per utente per corso)
       final Map<int, List<String>> courseTagsMap = {};
       final Set<String> completedCourseUserSet = {};
 
       for (final stat in validStats) {
         final cId = stat.idCorso;
-        final uId = stat.userId;
+        final uId = (stat.userId != null && stat.userId! > 0)
+            ? stat.userId!
+            : (usernameToIdMap[stat.username?.trim().toLowerCase()] ??
+               emailToIdMap[stat.email?.trim().toLowerCase()]);
         if (cId != null) {
           final tag = (stat.ntag ?? '').trim().toLowerCase();
           if (tag.isNotEmpty) {
@@ -570,7 +790,6 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
         ..sort((a, b) => b.total.compareTo(a.total));
 
       // 6. Calcolo suddivisione utenti attivi: Completati, In corso, Solo iscritti con gender e tipo corso (Sync / Async da Vista per Utente)
-      final Set<int> completedActiveUserIds = {};
       final Set<int> startedActiveUserIds = {};
 
       // Raggruppamento delle attività per (uId, cId) esattamente come in Vista per Utente
@@ -584,7 +803,8 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
         if (!uniqueActiveUsers.contains(uId)) continue;
 
         final st = (stat.statoCompletamentoCorso ?? '').trim().toLowerCase();
-        final isCompleted = st == 'completato' || stat.dataCompletamentoCorso != null;
+        final isCompleted = st == 'completato' ||
+            stat.dataCompletamentoCorso != null;
         final isStarted = st == 'in corso' ||
             stat.dataCompletamento != null ||
             stat.primoAccessoPiattaforma != null ||
@@ -803,6 +1023,8 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           _onlyEnrolledAsync = onlyEnrAsync;
           _onlyEnrolledLangCounts = onlyEnrLangMap;
           _courseActiveStats = sortedCourseStats;
+          _partnerActiveStats = sortedPartnerStats;
+          _ageActiveStats = sortedAgeStats;
           _activeUserDetails = activeUserDetailsList;
           _isLoading = false;
         });
@@ -886,6 +1108,14 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
                 // Grafico Distribuzione Gender Utenti Attivi
                 _buildGenderDistributionChart(),
+                const SizedBox(height: 28),
+
+                // Grafico Distribuzione Utenti Attivi per Partner Reference (Genere e Lingua)
+                _buildPartnerActiveStatsChart(),
+                const SizedBox(height: 28),
+
+                // Grafico Distribuzione Utenti Attivi per Fascia d'Età (<= 25 / > 25 anni con Genere e Lingua)
+                _buildAgeDistributionChart(),
                 const SizedBox(height: 28),
 
                 // Grafico Stato Avanzamento Utenti Attivi (Completati, In corso, Solo iscritti)
@@ -2044,6 +2274,984 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   }
 
   // --- Grafico Stato Avanzamento Utenti Attivi (Completati, In corso, Solo iscritti con Gender) ---
+  Widget _buildPartnerActiveStatsChart() {
+    final displayedPartners = _showAllPartners
+        ? _partnerActiveStats
+        : _partnerActiveStats.take(8).toList();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con titolo e legenda
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 980;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F766E).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.corporate_fare_rounded, color: Color(0xFF0F766E), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Distribuzione Utenti Attivi per Partner Reference',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Ripartizione degli utenti attivi per partner reference con dettaglio per genere e lingua',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
+                  _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
+                  _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
+                  _buildCourseLegendItem(const Color(0xFF16A34A), 'Completati'),
+                  const SizedBox(width: 4),
+                  OutlinedButton.icon(
+                    onPressed: (_partnerActiveStats.isEmpty || _isExportingPartners)
+                        ? null
+                        : _exportPartnersToExcel,
+                    icon: _isExportingPartners
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16),
+                    label: Text(
+                      _isExportingPartners ? 'Esportazione...' : 'Esporta Excel',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF16A34A),
+                      side: const BorderSide(color: Color(0xFF86EFAC)),
+                      backgroundColor: const Color(0xFFF0FDF4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    actionsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  actionsWidget,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 20),
+
+          if (_partnerActiveStats.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 36),
+                child: Column(
+                  children: [
+                    Icon(Icons.business_outlined, size: 40, color: Colors.grey.shade400),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Nessun dato partner reference per gli utenti attivi',
+                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else ...[
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: displayedPartners.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 18),
+              itemBuilder: (context, index) {
+                final partner = displayedPartners[index];
+                return _buildPartnerActiveRow(index + 1, partner);
+              },
+            ),
+            if (_partnerActiveStats.length > 8) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _showAllPartners = !_showAllPartners;
+                    });
+                  },
+                  icon: Icon(
+                    _showAllPartners ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    _showAllPartners
+                        ? 'Mostra solo i principali 8 partner'
+                        : 'Mostra tutti i ${_partnerActiveStats.length} partner',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryBlue,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPartnerActiveRow(int rank, PartnerActiveStat partner) {
+    final total = partner.total;
+    final malePct = total > 0 ? (partner.maleCount / total * 100) : 0.0;
+    final femalePct = total > 0 ? (partner.femaleCount / total * 100) : 0.0;
+    final unclassifiedPct = total > 0 ? (partner.unclassifiedCount / total * 100) : 0.0;
+
+    final sortedLangs = partner.langCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Posizione, Nome Partner, Badge Totale Attivi
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: rank <= 3 ? const Color(0xFF0F766E) : Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '#$rank',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: rank <= 3 ? Colors.white : Colors.grey.shade700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  partner.partnerName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Badge Completati e Badge Totale Attivi
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16A34A).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF16A34A)),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${partner.completedCount} completati (${partner.completionPercentage.toStringAsFixed(1)}%)',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF16A34A),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.people_alt_rounded, size: 14, color: AppTheme.primaryBlue),
+                        const SizedBox(width: 6),
+                        Text(
+                          '$total attivi',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Stacked Progress Bar proporzionale per Gender
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              height: 12,
+              width: double.infinity,
+              color: Colors.grey.shade200,
+              child: total == 0
+                  ? const SizedBox.shrink()
+                  : Row(
+                      children: [
+                        if (partner.maleCount > 0)
+                          Expanded(
+                            flex: partner.maleCount,
+                            child: Container(color: const Color(0xFF2563EB)),
+                          ),
+                        if (partner.femaleCount > 0)
+                          Expanded(
+                            flex: partner.femaleCount,
+                            child: Container(color: const Color(0xFFE11D48)),
+                          ),
+                        if (partner.unclassifiedCount > 0)
+                          Expanded(
+                            flex: partner.unclassifiedCount,
+                            child: Container(color: const Color(0xFF64748B)),
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Dettaglio Gender (M / F / N.C.) e Completati con percentuali
+          Wrap(
+            spacing: 16,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _buildGenderChipStat(
+                const Color(0xFF2563EB),
+                'M',
+                partner.maleCount,
+                malePct,
+              ),
+              _buildGenderChipStat(
+                const Color(0xFFE11D48),
+                'F',
+                partner.femaleCount,
+                femalePct,
+              ),
+              _buildGenderChipStat(
+                const Color(0xFF64748B),
+                'N.C.',
+                partner.unclassifiedCount,
+                unclassifiedPct,
+              ),
+              _buildGenderChipStat(
+                const Color(0xFF16A34A),
+                'Completati',
+                partner.completedCount,
+                partner.completionPercentage,
+              ),
+            ],
+          ),
+
+          // Dettaglio Ripartizione per Lingua
+          if (sortedLangs.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, thickness: 0.5),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.translate_rounded, size: 13, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Lingue:',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: sortedLangs.map((entry) {
+                      final langCode = entry.key;
+                      final count = entry.value;
+                      final pct = total > 0 ? (count / total * 100) : 0.0;
+                      final genderMap = partner.genderLangCounts[langCode] ?? {};
+                      final m = genderMap['M'] ?? 0;
+                      final f = genderMap['F'] ?? 0;
+                      final nc = genderMap['N.C.'] ?? 0;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              langCode,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primaryBlue,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$count (${pct.toStringAsFixed(0)}%)',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade800,
+                              ),
+                            ),
+                            if (m > 0 || f > 0 || nc > 0) ...[
+                              const SizedBox(width: 6),
+                              if (m > 0)
+                                _buildMiniGenderTag('M', m, const Color(0xFF2563EB)),
+                              if (f > 0) ...[
+                                const SizedBox(width: 3),
+                                _buildMiniGenderTag('F', f, const Color(0xFFE11D48)),
+                              ],
+                              if (nc > 0) ...[
+                                const SizedBox(width: 3),
+                                _buildMiniGenderTag('N.C.', nc, const Color(0xFF64748B)),
+                              ],
+                            ],
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // --- Grafico Distribuzione Utenti Attivi per Fascia d'Età (<= 25 / > 25 anni con Genere e Lingua) ---
+  Widget _buildAgeDistributionChart() {
+    final grandTotal = _activeUsersCount > 0
+        ? _activeUsersCount
+        : _ageActiveStats.fold<int>(0, (sum, i) => sum + i.total);
+
+    final le25Stat = _ageActiveStats.firstWhere(
+      (s) => s.key == 'le25',
+      orElse: () => AgeActiveStat(label: 'Età ≤ 25 anni', key: 'le25'),
+    );
+    final gt25Stat = _ageActiveStats.firstWhere(
+      (s) => s.key == 'gt25',
+      orElse: () => AgeActiveStat(label: 'Età > 25 anni', key: 'gt25'),
+    );
+    final unknownStat = _ageActiveStats.firstWhere(
+      (s) => s.key == 'unknown',
+      orElse: () => AgeActiveStat(label: 'Età non specificata', key: 'unknown'),
+    );
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con titolo, legenda ed export
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 980;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.cake_rounded, color: Color(0xFF6366F1), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Distribuzione Utenti Attivi per Fascia d\'Età',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Ripartizione utenti con età ≤ 25 anni e > 25 anni con dettaglio per genere e lingua',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
+                  _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
+                  _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
+                  _buildCourseLegendItem(const Color(0xFF16A34A), 'Completati'),
+                  const SizedBox(width: 4),
+                  OutlinedButton.icon(
+                    onPressed: (_ageActiveStats.isEmpty || _isExportingAge)
+                        ? null
+                        : _exportAgeToExcel,
+                    icon: _isExportingAge
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16),
+                    label: Text(
+                      _isExportingAge ? 'Esportazione...' : 'Esporta Excel',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF16A34A),
+                      side: const BorderSide(color: Color(0xFF86EFAC)),
+                      backgroundColor: const Color(0xFFF0FDF4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    actionsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  actionsWidget,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+
+          // Barra di proporzione visiva (≤ 25 vs > 25 vs Non specificato)
+          if (grandTotal > 0) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                height: 16,
+                width: double.infinity,
+                color: Colors.grey.shade200,
+                child: Row(
+                  children: [
+                    if (le25Stat.total > 0)
+                      Expanded(
+                        flex: le25Stat.total,
+                        child: Container(color: const Color(0xFF6366F1)),
+                      ),
+                    if (gt25Stat.total > 0)
+                      Expanded(
+                        flex: gt25Stat.total,
+                        child: Container(color: const Color(0xFF0284C7)),
+                      ),
+                    if (unknownStat.total > 0)
+                      Expanded(
+                        flex: unknownStat.total,
+                        child: Container(color: const Color(0xFF94A3B8)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 16,
+              runSpacing: 6,
+              children: [
+                _buildAgeProportionLegend(
+                  const Color(0xFF6366F1),
+                  '≤ 25 anni',
+                  le25Stat.total,
+                  grandTotal > 0 ? (le25Stat.total / grandTotal * 100) : 0,
+                ),
+                _buildAgeProportionLegend(
+                  const Color(0xFF0284C7),
+                  '> 25 anni',
+                  gt25Stat.total,
+                  grandTotal > 0 ? (gt25Stat.total / grandTotal * 100) : 0,
+                ),
+                if (unknownStat.total > 0)
+                  _buildAgeProportionLegend(
+                    const Color(0xFF94A3B8),
+                    'Non specificato',
+                    unknownStat.total,
+                    grandTotal > 0 ? (unknownStat.total / grandTotal * 100) : 0,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // Card di dettaglio per ciascuna fascia d'età
+          if (_ageActiveStats.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  'Nessun dato disponibile sulla distribuzione per età.',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                ),
+              ),
+            )
+          else
+            ..._ageActiveStats.map((stat) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: _buildAgeActiveRow(stat, grandTotal),
+                )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAgeProportionLegend(Color color, String label, int count, double pct) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+        ),
+        Text(
+          '$count (${pct.toStringAsFixed(1)}%)',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade800),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAgeActiveRow(AgeActiveStat stat, int grandTotal) {
+    final total = stat.total;
+    final sharePct = grandTotal > 0 ? (total / grandTotal * 100) : 0.0;
+    final malePct = total > 0 ? (stat.maleCount / total * 100) : 0.0;
+    final femalePct = total > 0 ? (stat.femaleCount / total * 100) : 0.0;
+    final unclassifiedPct = total > 0 ? (stat.unclassifiedCount / total * 100) : 0.0;
+
+    final sortedLangs = stat.langCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final IconData bracketIcon;
+    final Color bracketColor;
+    if (stat.key == 'le25') {
+      bracketIcon = Icons.school_rounded;
+      bracketColor = const Color(0xFF6366F1);
+    } else if (stat.key == 'gt25') {
+      bracketIcon = Icons.workspace_premium_rounded;
+      bracketColor = const Color(0xFF0284C7);
+    } else {
+      bracketIcon = Icons.help_outline_rounded;
+      bracketColor = const Color(0xFF94A3B8);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Icona fascia, Etichetta fascia, Badge % su attivi, Badge completati, Badge totale
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: bracketColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(bracketIcon, size: 18, color: bracketColor),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      stat.label,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    Text(
+                      '${sharePct.toStringAsFixed(1)}% della popolazione utenti attivi',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16A34A).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF16A34A)),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${stat.completedCount} completati (${stat.completionPercentage.toStringAsFixed(1)}%)',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF16A34A),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: bracketColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: bracketColor.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.people_alt_rounded, size: 14, color: bracketColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          '$total attivi',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: bracketColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Stacked Progress Bar proporzionale per Gender
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              height: 12,
+              width: double.infinity,
+              color: Colors.grey.shade200,
+              child: total == 0
+                  ? const SizedBox.shrink()
+                  : Row(
+                      children: [
+                        if (stat.maleCount > 0)
+                          Expanded(
+                            flex: stat.maleCount,
+                            child: Container(color: const Color(0xFF2563EB)),
+                          ),
+                        if (stat.femaleCount > 0)
+                          Expanded(
+                            flex: stat.femaleCount,
+                            child: Container(color: const Color(0xFFE11D48)),
+                          ),
+                        if (stat.unclassifiedCount > 0)
+                          Expanded(
+                            flex: stat.unclassifiedCount,
+                            child: Container(color: const Color(0xFF64748B)),
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Dettaglio Gender (M / F / N.C.) e Completati con percentuali
+          Wrap(
+            spacing: 16,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _buildGenderChipStat(
+                const Color(0xFF2563EB),
+                'M',
+                stat.maleCount,
+                malePct,
+              ),
+              _buildGenderChipStat(
+                const Color(0xFFE11D48),
+                'F',
+                stat.femaleCount,
+                femalePct,
+              ),
+              _buildGenderChipStat(
+                const Color(0xFF64748B),
+                'N.C.',
+                stat.unclassifiedCount,
+                unclassifiedPct,
+              ),
+              _buildGenderChipStat(
+                const Color(0xFF16A34A),
+                'Completati',
+                stat.completedCount,
+                stat.completionPercentage,
+              ),
+            ],
+          ),
+
+          // Dettaglio Ripartizione per Lingua
+          if (sortedLangs.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, thickness: 0.5),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.translate_rounded, size: 13, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Lingue:',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: sortedLangs.map((entry) {
+                      final langCode = entry.key;
+                      final count = entry.value;
+                      final pct = total > 0 ? (count / total * 100) : 0.0;
+                      final genderMap = stat.genderLangCounts[langCode] ?? {};
+                      final m = genderMap['M'] ?? 0;
+                      final f = genderMap['F'] ?? 0;
+                      final nc = genderMap['N.C.'] ?? 0;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              langCode,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primaryBlue,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$count (${pct.toStringAsFixed(0)}%)',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade800,
+                              ),
+                            ),
+                            if (m > 0 || f > 0 || nc > 0) ...[
+                              const SizedBox(width: 6),
+                              if (m > 0)
+                                _buildMiniGenderTag('M', m, const Color(0xFF2563EB)),
+                              if (f > 0) ...[
+                                const SizedBox(width: 3),
+                                _buildMiniGenderTag('F', f, const Color(0xFFE11D48)),
+                              ],
+                              if (nc > 0) ...[
+                                const SizedBox(width: 3),
+                                _buildMiniGenderTag('N.C.', nc, const Color(0xFF64748B)),
+                              ],
+                            ],
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildActiveUsersProgressChart() {
     final total = _activeUsersCount;
     final compPct = total > 0 ? (_totalCompleted / total * 100) : 0.0;
@@ -2071,75 +3279,90 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           // Header Card
           LayoutBuilder(
             builder: (context, constraints) {
-              final isCompact = constraints.maxWidth < 740;
-              return Flex(
-                direction: isCompact ? Axis.vertical : Axis.horizontal,
-                crossAxisAlignment: isCompact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+              final isCompact = constraints.maxWidth < 980;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.stacked_bar_chart_rounded, color: Color(0xFF059669), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Stato Avanzamento Utenti Attivi',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Ripartizione tra Completati, In corso e Solo iscritti con distribuzione di genere',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 16,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
+                  _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
+                  _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
+                  ElevatedButton.icon(
+                    onPressed: (_activeUsersCount == 0 || _isExportingProgress) ? null : _exportProgressToExcel,
+                    icon: _isExportingProgress
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16, color: Colors.white),
+                    label: Text(
+                      _isExportingProgress ? 'Esportazione...' : 'Esporta Excel',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF16A34A),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    actionsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.stacked_bar_chart_rounded, color: Color(0xFF059669), size: 22),
-                      ),
-                      const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Stato Avanzamento Utenti Attivi',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.primaryBlue,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Ripartizione tra Completati, In corso e Solo iscritti con distribuzione di genere',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  if (isCompact) const SizedBox(height: 14),
-                  // Legenda Gender & Azione Esporta Excel
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
-                      _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
-                      _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
-                      ElevatedButton.icon(
-                        onPressed: (_activeUsersCount == 0 || _isExportingProgress) ? null : _exportProgressToExcel,
-                        icon: _isExportingProgress
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.table_view_rounded, size: 16, color: Colors.white),
-                        label: Text(
-                          _isExportingProgress ? 'Esportazione...' : 'Esporta Excel',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF16A34A),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                        ),
-                      ),
-                    ],
-                  ),
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  actionsWidget,
                 ],
               );
             },
@@ -2579,77 +3802,92 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           // Header Card con titolo e legenda
           LayoutBuilder(
             builder: (context, constraints) {
-              final isCompact = constraints.maxWidth < 720;
-              return Flex(
-                direction: isCompact ? Axis.vertical : Axis.horizontal,
-                crossAxisAlignment: isCompact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+              final isCompact = constraints.maxWidth < 980;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.bar_chart_rounded, color: AppTheme.primaryBlue, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Distribuzione Iscrizioni per Corso (Utenti Attivi)',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Ripartizione degli utenti attivi per corso e composizione di genere',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
+                  _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
+                  _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
+                  const SizedBox(width: 4),
+                  OutlinedButton.icon(
+                    onPressed: (_courseActiveStats.isEmpty || _isExporting) ? null : _exportToExcel,
+                    icon: _isExporting
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16),
+                    label: Text(
+                      _isExporting ? 'Esportazione...' : 'Esporta Excel',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF16A34A),
+                      side: const BorderSide(color: Color(0xFF86EFAC)),
+                      backgroundColor: const Color(0xFFF0FDF4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    actionsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.bar_chart_rounded, color: AppTheme.primaryBlue, size: 22),
-                      ),
-                      const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Distribuzione Iscrizioni per Corso (Utenti Attivi)',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.primaryBlue,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Ripartizione degli utenti attivi per corso e composizione di genere',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  if (isCompact) const SizedBox(height: 14),
-                  // Legenda Gender & Azione Esporta Excel
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
-                      _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
-                      _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
-                      const SizedBox(width: 4),
-                      OutlinedButton.icon(
-                        onPressed: (_courseActiveStats.isEmpty || _isExporting) ? null : _exportToExcel,
-                        icon: _isExporting
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
-                              )
-                            : const Icon(Icons.table_view_rounded, size: 16),
-                        label: Text(
-                          _isExporting ? 'Esportazione...' : 'Esporta Excel',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF16A34A),
-                          side: const BorderSide(color: Color(0xFF86EFAC)),
-                          backgroundColor: const Color(0xFFF0FDF4),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                      ),
-                    ],
-                  ),
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  actionsWidget,
                 ],
               );
             },

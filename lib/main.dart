@@ -143,6 +143,21 @@ void main() async {
     await isar.writeTxn(() async => await isar.courseExclusions.clear());
   }
 
+  // Inizializzazione esclusioni corsi predefinite di default (124, 123, 1) se assenti
+  const defaultExcludedCourseIds = [124, 123, 1];
+  for (final id in defaultExcludedCourseIds) {
+    final existing = await isar.courseExclusions.where().courseIdEqualTo(id).findFirst();
+    if (existing == null) {
+      await isar.writeTxn(() async {
+        await isar.courseExclusions.put(
+          CourseExclusion()
+            ..courseId = id
+            ..createdAt = DateTime.now(),
+        );
+      });
+    }
+  }
+
   // 3. Inizializzazione Proxy Service con le impostazioni persistite
   AppSettings settings;
   try {

@@ -43,6 +43,7 @@ class _ExclusionsViewState extends ConsumerState<ExclusionsView> {
   StreamSubscription<void>? _statsSub;
   StreamSubscription<void>? _coursesSub;
   StreamSubscription<void>? _courseInfoSub;
+  static const List<int> defaultExcludedIds = [124, 123, 1];
   String _searchQuery = '';
 
   @override
@@ -116,7 +117,18 @@ class _ExclusionsViewState extends ConsumerState<ExclusionsView> {
   Future<void> _loadData() async {
     try {
       final isar = ref.read(isarProvider);
-      final exclusions = await isar.courseExclusions.where().findAll();
+      var exclusions = await isar.courseExclusions.where().findAll();
+      if (exclusions.isEmpty) {
+        final now = DateTime.now();
+        final defaultItems = defaultExcludedIds.map((id) => CourseExclusion()
+          ..courseId = id
+          ..createdAt = now,
+        ).toList();
+        await isar.writeTxn(() async {
+          await isar.courseExclusions.putAll(defaultItems);
+        });
+        exclusions = await isar.courseExclusions.where().findAll();
+      }
       final courses = await isar.courses.where().findAll();
       final stats = await isar.statMdls.where().findAll();
       final courseInfos = await isar.courseInfos.where().findAll();
@@ -359,6 +371,66 @@ class _ExclusionsViewState extends ConsumerState<ExclusionsView> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Tutte le esclusioni corsi sono state eliminate.'),
+            backgroundColor: Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore: $e'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _restoreDefaultExclusions() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ripristinare esclusioni predefinite?'),
+        content: const Text(
+          'Verranno impostati come corsi esclusi i valori predefiniti: 124, 123 e 1.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryBlue),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ripristina'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final isar = ref.read(isarProvider);
+      final now = DateTime.now();
+      final items = defaultExcludedIds.map((id) => CourseExclusion()
+        ..courseId = id
+        ..courseName = _coursesNameMap[id]
+        ..createdAt = now,
+      ).toList();
+
+      await isar.writeTxn(() async {
+        await isar.courseExclusions.putAll(items);
+      });
+      await _loadData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Esclusioni predefinite (124, 123, 1) ripristinate con successo.'),
             backgroundColor: Color(0xFF16A34A),
             behavior: SnackBarBehavior.floating,
           ),
@@ -676,17 +748,33 @@ class _ExclusionsViewState extends ConsumerState<ExclusionsView> {
                   ),
                 ],
               ),
-              if (_savedExclusions.isNotEmpty)
-                OutlinedButton.icon(
-                  onPressed: _deleteAllExclusions,
-                  icon: const Icon(Icons.delete_sweep_rounded, size: 18, color: Colors.red),
-                  label: const Text('Elimina Tutti', style: TextStyle(color: Colors.red)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _restoreDefaultExclusions,
+                    icon: const Icon(Icons.settings_backup_restore_rounded, size: 18, color: AppTheme.primaryBlue),
+                    label: const Text('Ripristina Default (124, 123, 1)', style: TextStyle(color: AppTheme.primaryBlue)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppTheme.primaryBlue.withAlpha(120)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    ),
                   ),
-                ),
+                  if (_savedExclusions.isNotEmpty)
+                    OutlinedButton.icon(
+                      onPressed: _deleteAllExclusions,
+                      icon: const Icon(Icons.delete_sweep_rounded, size: 18, color: Colors.red),
+                      label: const Text('Elimina Tutti', style: TextStyle(color: Colors.red)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 16),

@@ -4,10 +4,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:universal_io/io.dart' as uio;
 import '../../sync/models/badge_user.dart';
+import '../../sync/models/user.dart';
 
 class BadgeExcelExporter {
   /// Esporta la lista dei badge assegnati agli utenti in un file Excel (.xlsx) con formattazione istituzionale
-  static Future<String?> exportBadges(List<BadgeUser> badges) async {
+  static Future<String?> exportBadges(
+    List<BadgeUser> badges, [
+    Map<String, User>? usersMap,
+  ]) async {
     final excel = Excel.createExcel();
     const sheetName = 'Badges CyberProTrain';
 
@@ -58,10 +62,10 @@ class BadgeExcelExporter {
 
     // Intestazioni Colonne
     final headers = [
-      'ID',
+      'Nome e Cognome Utente',
+      'Email Utente',
       'Badge / Certificazione',
       'Codice',
-      'Email Utente',
       'Data Rilascio (Issued On)',
       'Ultimo Sync',
     ];
@@ -79,25 +83,35 @@ class BadgeExcelExporter {
       final baseStyle = i.isEven ? rowEvenStyle : rowOddStyle;
       final centerStyle = i.isEven ? centerEvenStyle : centerOddStyle;
 
-      // 1. ID
-      final cellId = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex));
-      cellId.value = IntCellValue(b.id);
-      cellId.cellStyle = centerStyle;
+      final u = usersMap?[b.email?.trim().toLowerCase()];
+      String userName = 'N/D';
+      if (u != null) {
+        if (u.fullname != null && u.fullname!.trim().isNotEmpty) {
+          userName = u.fullname!.trim();
+        } else if ((u.firstname != null && u.firstname!.isNotEmpty) || (u.lastname != null && u.lastname!.isNotEmpty)) {
+          userName = '${u.firstname ?? ''} ${u.lastname ?? ''}'.trim();
+        }
+      }
 
-      // 2. Badge
-      final cellBadge = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex));
+      // 1. Nome e Cognome Utente
+      final cellName = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex));
+      cellName.value = TextCellValue(userName);
+      cellName.cellStyle = baseStyle;
+
+      // 2. Email Utente
+      final cellEmail = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex));
+      cellEmail.value = TextCellValue(b.email ?? '');
+      cellEmail.cellStyle = baseStyle;
+
+      // 3. Badge
+      final cellBadge = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex));
       cellBadge.value = TextCellValue(b.badge ?? '');
       cellBadge.cellStyle = baseStyle;
 
-      // 3. Codice
-      final cellCode = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex));
+      // 4. Codice
+      final cellCode = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex));
       cellCode.value = TextCellValue(b.code ?? '');
       cellCode.cellStyle = centerStyle;
-
-      // 4. Email Utente
-      final cellEmail = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex));
-      cellEmail.value = TextCellValue(b.email ?? '');
-      cellEmail.cellStyle = baseStyle;
 
       // 5. Data Rilascio
       final cellIssued = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: rowIndex));
@@ -119,10 +133,10 @@ class BadgeExcelExporter {
     }
 
     // Larghezze colonne
-    sheet.setColumnWidth(0, 12);
-    sheet.setColumnWidth(1, 40);
-    sheet.setColumnWidth(2, 18);
-    sheet.setColumnWidth(3, 35);
+    sheet.setColumnWidth(0, 30);
+    sheet.setColumnWidth(1, 35);
+    sheet.setColumnWidth(2, 40);
+    sheet.setColumnWidth(3, 18);
     sheet.setColumnWidth(4, 25);
     sheet.setColumnWidth(5, 20);
 
@@ -151,7 +165,6 @@ class BadgeExcelExporter {
       await file.writeAsBytes(uint8List);
       return finalPath;
     }
-
-    return savedPath ?? (kIsWeb ? fileName : null);
+    return savedPath;
   }
 }

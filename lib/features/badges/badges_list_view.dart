@@ -8,6 +8,7 @@ import 'package:isar_community/isar.dart';
 import '../../core/db/isar_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../sync/models/badge_user.dart';
+import '../sync/models/user.dart';
 import 'services/badge_excel_exporter.dart';
 
 class BadgesListView extends ConsumerStatefulWidget {
@@ -33,8 +34,8 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
   static const int _pageSize = 50;
   int _currentPage = 0;
 
-  // Ordinamento: 0: ID, 1: Badge, 2: Codice, 3: Email, 4: Data Emissione
-  int _sortColumnIndex = 0;
+  // Ordinamento: 1: Utente, 2: Badge, 3: Codice, 4: Data Emissione
+  int _sortColumnIndex = 1;
   bool _sortAscending = true;
 
   // Filtri Avanzati
@@ -44,21 +45,23 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
   DateTime? _issuedTo;
 
   StreamSubscription<void>? _badgesSub;
+  StreamSubscription<void>? _usersSub;
+  Map<String, User> _usersByEmail = {};
 
   @override
   void initState() {
     super.initState();
     _loadBadges();
     final isar = ref.read(isarProvider);
-    _badgesSub = isar.badgeUsers.watchLazy().listen((_) {
-      _loadBadges();
-    });
+    _badgesSub = isar.badgeUsers.watchLazy().listen((_) => _loadBadges());
+    _usersSub = isar.users.watchLazy().listen((_) => _loadBadges());
     _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
     _badgesSub?.cancel();
+    _usersSub?.cancel();
     _searchController.dispose();
     _horizontalScrollController.dispose();
     _verticalScrollController.dispose();
@@ -68,8 +71,15 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
   Future<void> _loadBadges() async {
     final isar = ref.read(isarProvider);
     List<BadgeUser> list;
+    final Map<String, User> usersMap = {};
     try {
       list = await isar.badgeUsers.where().findAll();
+      final usersList = await isar.users.where().findAll();
+      for (final u in usersList) {
+        if (u.email != null && u.email!.trim().isNotEmpty) {
+          usersMap[u.email!.trim().toLowerCase()] = u;
+        }
+      }
     } catch (e) {
       debugPrint('[BadgesListView] Errore lettura Isar: $e');
       try {
@@ -80,10 +90,48 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
     if (mounted) {
       setState(() {
         _allBadges = list;
+        _usersByEmail = usersMap;
         _isLoading = false;
         _applyFilter();
       });
     }
+  }
+
+  String _getUserFullName(BadgeUser b) {
+    final u = _usersByEmail[b.email?.trim().toLowerCase()];
+    if (u != null) {
+      if (u.fullname != null && u.fullname!.trim().isNotEmpty) {
+        return u.fullname!.trim();
+      }
+      final first = u.firstname ?? '';
+      final last = u.lastname ?? '';
+      final combined = '$first $last'.trim();
+      if (combined.isNotEmpty) return combined;
+    }
+    return 'N/D';
+  }
+
+  String _getInitials(String name) {
+    if (name.isEmpty || name == 'N/D') return '?';
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
+  }
+
+  Color _getAvatarColor(String email) {
+    final hash = email.hashCode.abs();
+    const colors = [
+      Color(0xFF2563EB),
+      Color(0xFF7C3AED),
+      Color(0xFF059669),
+      Color(0xFFD97706),
+      Color(0xFFDC2626),
+      Color(0xFF0891B2),
+      Color(0xFF4F46E5),
+    ];
+    return colors[hash % colors.length];
   }
 
   void _onSearchChanged() {
@@ -106,13 +154,14 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
     _filteredBadges = _allBadges.where((b) {
       // 1. Ricerca generale
       if (query.isNotEmpty) {
-        final idStr = '${b.id}';
         final badge = (b.badge ?? '').toLowerCase();
         final code = (b.code ?? '').toLowerCase();
         final email = (b.email ?? '').toLowerCase();
         final issued = (b.issuedOn ?? '').toLowerCase();
+        final u = _usersByEmail[b.email?.trim().toLowerCase()];
+        final userName = (u?.fullname ?? '${u?.firstname ?? ''} ${u?.lastname ?? ''}').toLowerCase();
 
-        final matches = idStr.contains(query) ||
+        final matches = userName.contains(query) ||
             badge.contains(query) ||
             code.contains(query) ||
             email.contains(query) ||
@@ -151,17 +200,17 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
     _filteredBadges.sort((a, b) {
       int cmp = 0;
       switch (_sortColumnIndex) {
-        case 0:
-          cmp = a.id.compareTo(b.id);
-          break;
         case 1:
-          cmp = (a.badge ?? '').toLowerCase().compareTo((b.badge ?? '').toLowerCase());
+          // Utente (Nome e Cognome)
+          final nameA = _getUserFullName(a).toLowerCase();
+          final nameB = _getUserFullName(b).toLowerCase();
+          cmp = nameA.compareTo(nameB);
           break;
         case 2:
-          cmp = (a.code ?? '').toLowerCase().compareTo((b.code ?? '').toLowerCase());
+          cmp = (a.badge ?? '').toLowerCase().compareTo((b.badge ?? '').toLowerCase());
           break;
         case 3:
-          cmp = (a.email ?? '').toLowerCase().compareTo((b.email ?? '').toLowerCase());
+          cmp = (a.code ?? '').toLowerCase().compareTo((b.code ?? '').toLowerCase());
           break;
         case 4:
           final aDate = a.issuedOnDate ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -169,7 +218,7 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
           cmp = aDate.compareTo(bDate);
           break;
         default:
-          cmp = a.id.compareTo(b.id);
+          cmp = 0;
       }
       return _sortAscending ? cmp : -cmp;
     });
@@ -205,7 +254,7 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
     if (_filteredBadges.isEmpty || _isExporting) return;
     setState(() => _isExporting = true);
     try {
-      final savedPath = await BadgeExcelExporter.exportBadges(_filteredBadges);
+      final savedPath = await BadgeExcelExporter.exportBadges(_filteredBadges, _usersByEmail);
       if (mounted) {
         if (savedPath != null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -425,19 +474,15 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
                                                   columns: [
                                                     const DataColumn(label: Text('AZIONI', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 0.5))),
                                                     DataColumn(
-                                                      label: const Text('ID', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 0.5)),
-                                                      onSort: (col, asc) => _onSort(0, asc),
-                                                    ),
-                                                    DataColumn(
-                                                      label: const Text('BADGE / CERTIFICAZIONE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 0.5)),
+                                                      label: const Text('UTENTE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 0.5)),
                                                       onSort: (col, asc) => _onSort(1, asc),
                                                     ),
                                                     DataColumn(
-                                                      label: const Text('CODICE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 0.5)),
+                                                      label: const Text('BADGE / CERTIFICAZIONE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 0.5)),
                                                       onSort: (col, asc) => _onSort(2, asc),
                                                     ),
                                                     DataColumn(
-                                                      label: const Text('EMAIL UTENTE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 0.5)),
+                                                      label: const Text('CODICE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 0.5)),
                                                       onSort: (col, asc) => _onSort(3, asc),
                                                     ),
                                                     DataColumn(
@@ -464,17 +509,45 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
                                                           ),
                                                         ),
                                                         DataCell(
-                                                          Container(
-                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                                            decoration: BoxDecoration(
-                                                              color: Colors.grey.shade100,
-                                                              borderRadius: BorderRadius.circular(6),
-                                                              border: Border.all(color: Colors.grey.shade300),
-                                                            ),
-                                                            child: Text(
-                                                              '#${b.id}',
-                                                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.bold),
-                                                            ),
+                                                          Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              CircleAvatar(
+                                                                radius: 15,
+                                                                backgroundColor: _getAvatarColor(b.email ?? ''),
+                                                                child: Text(
+                                                                  _getInitials(_getUserFullName(b)),
+                                                                  style: const TextStyle(
+                                                                    color: Colors.white,
+                                                                    fontWeight: FontWeight.bold,
+                                                                    fontSize: 11,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              const SizedBox(width: 10),
+                                                              Column(
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                                children: [
+                                                                  Text(
+                                                                    _getUserFullName(b),
+                                                                    style: const TextStyle(
+                                                                      fontWeight: FontWeight.w600,
+                                                                      fontSize: 13,
+                                                                      color: AppTheme.primaryBlue,
+                                                                    ),
+                                                                  ),
+                                                                  if (b.email != null && b.email!.isNotEmpty)
+                                                                    Text(
+                                                                      b.email!,
+                                                                      style: TextStyle(
+                                                                        fontSize: 11,
+                                                                        color: Colors.grey.shade600,
+                                                                      ),
+                                                                    ),
+                                                                ],
+                                                              ),
+                                                            ],
                                                           ),
                                                         ),
                                                         DataCell(
@@ -521,19 +594,6 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
                                                                   'N/D',
                                                                   style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
                                                                 ),
-                                                        ),
-                                                        DataCell(
-                                                          Row(
-                                                            mainAxisSize: MainAxisSize.min,
-                                                            children: [
-                                                              Icon(Icons.email_outlined, size: 14, color: Colors.grey.shade500),
-                                                              const SizedBox(width: 6),
-                                                              Text(
-                                                                b.email ?? 'N/D',
-                                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                                                              ),
-                                                            ],
-                                                          ),
                                                         ),
                                                         DataCell(
                                                           Text(
@@ -1266,7 +1326,20 @@ class _BadgesListViewState extends ConsumerState<BadgesListView> {
                         title: 'Utente Assegnatario',
                         icon: Icons.person_outline_rounded,
                         items: [
+                          _buildDetailRow('Nome e Cognome', _getUserFullName(badge)),
                           _buildDetailRow('Email Utente', badge.email ?? 'N/D'),
+                          if (_usersByEmail[badge.email?.trim().toLowerCase()]?.username != null &&
+                              _usersByEmail[badge.email?.trim().toLowerCase()]!.username!.isNotEmpty)
+                            _buildDetailRow(
+                              'Username',
+                              _usersByEmail[badge.email?.trim().toLowerCase()]!.username!,
+                            ),
+                          if (_usersByEmail[badge.email?.trim().toLowerCase()]?.department != null &&
+                              _usersByEmail[badge.email?.trim().toLowerCase()]!.department!.isNotEmpty)
+                            _buildDetailRow(
+                              'Dipartimento',
+                              _usersByEmail[badge.email?.trim().toLowerCase()]!.department!,
+                            ),
                         ],
                       ),
                       const SizedBox(height: 16),
