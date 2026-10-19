@@ -47,6 +47,49 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   Map<String, int> _activeLangCounts = {};
   Map<String, Map<String, int>> _activeGenderLangCounts = {};
 
+  // Totale Iscrizioni Corsi per Utenti Attivi
+  String _activeCourseEnrollmentFilter = 'all'; // 'all' | 'completed' | 'other' | 'in_progress' | 'only_enrolled'
+  int _activeCourseEnrollmentsTotal = 0;
+  int _activeCourseEnrollmentsMale = 0;
+  int _activeCourseEnrollmentsFemale = 0;
+  int _activeCourseEnrollmentsUnclassified = 0;
+  int _activeCourseEnrollmentsCompleted = 0;
+  int _activeCourseEnrollmentsSync = 0;
+  int _activeCourseEnrollmentsAsync = 0;
+  Map<String, int> _activeCourseEnrollmentsLangCounts = {};
+  Map<String, Map<String, int>> _activeCourseEnrollmentsGenderLangCounts = {};
+
+  // Dettagli Stato: Completati
+  int _activeEnrCompMale = 0;
+  int _activeEnrCompFemale = 0;
+  int _activeEnrCompUnclass = 0;
+  Map<String, int> _activeEnrCompLangCounts = {};
+  Map<String, Map<String, int>> _activeEnrCompGenderLangCounts = {};
+
+  // Dettagli Stato: In Corso
+  int _activeEnrInProgress = 0;
+  int _activeEnrInProgMale = 0;
+  int _activeEnrInProgFemale = 0;
+  int _activeEnrInProgUnclass = 0;
+  Map<String, int> _activeEnrInProgLangCounts = {};
+  Map<String, Map<String, int>> _activeEnrInProgGenderLangCounts = {};
+
+  // Dettagli Stato: Solo Iscritti
+  int _activeEnrOnlyEnrolled = 0;
+  int _activeEnrOnlyEnrMale = 0;
+  int _activeEnrOnlyEnrFemale = 0;
+  int _activeEnrOnlyEnrUnclass = 0;
+  Map<String, int> _activeEnrOnlyEnrLangCounts = {};
+  Map<String, Map<String, int>> _activeEnrOnlyEnrGenderLangCounts = {};
+
+  // Dettagli Stato: Altri (In corso + Solo iscritti)
+  int get _activeEnrOther => _activeEnrInProgress + _activeEnrOnlyEnrolled;
+  int get _activeEnrOtherMale => _activeEnrInProgMale + _activeEnrOnlyEnrMale;
+  int get _activeEnrOtherFemale => _activeEnrInProgFemale + _activeEnrOnlyEnrFemale;
+  int get _activeEnrOtherUnclass => _activeEnrInProgUnclass + _activeEnrOnlyEnrUnclass;
+  Map<String, int> _activeEnrOtherLangCounts = {};
+  Map<String, Map<String, int>> _activeEnrOtherGenderLangCounts = {};
+
   // Totale Iscrizioni (conteggio multi-corso per tutti i corsi non esclusi)
   int _totalEnrollmentsCount = 0;
   int _enrollmentMaleCount = 0;
@@ -671,6 +714,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
       // 4. Mappatura tipo corso (sync/async) e completamento corsi da validStats (1 completamento per utente per corso)
       final Map<int, List<String>> courseTagsMap = {};
       final Set<String> completedCourseUserSet = {};
+      final Set<String> startedCourseUserSet = {};
 
       for (final stat in validStats) {
         final cId = stat.idCorso;
@@ -684,10 +728,16 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
             courseTagsMap.putIfAbsent(cId, () => []).add(tag);
           }
           if (uId != null) {
-            final isCompleted = (stat.statoCompletamentoCorso ?? '').trim().toLowerCase() == 'completato' ||
-                stat.dataCompletamentoCorso != null;
+            final st = (stat.statoCompletamentoCorso ?? '').trim().toLowerCase();
+            final isCompleted = st == 'completato' || stat.dataCompletamentoCorso != null;
+            final isStarted = st == 'in corso' ||
+                stat.dataCompletamento != null ||
+                stat.primoAccessoPiattaforma != null ||
+                stat.ultimoAccessoPiattaforma != null;
             if (isCompleted) {
               completedCourseUserSet.add('$cId-$uId');
+            } else if (isStarted) {
+              startedCourseUserSet.add('$cId-$uId');
             }
           }
         }
@@ -721,6 +771,36 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
       final Map<int, CourseActiveStat> courseStatsMap = {};
       final Set<String> processedCourseUser = {};
 
+      int totalActiveCourseEnrollments = 0;
+      int activeEnrMale = 0;
+      int activeEnrFemale = 0;
+      int activeEnrUnclass = 0;
+      int activeEnrCompleted = 0;
+      int activeEnrSync = 0;
+      int activeEnrAsync = 0;
+      final Map<String, int> activeEnrLangMap = {};
+      final Map<String, Map<String, int>> activeEnrGenderLangMap = {};
+
+      int activeCompMale = 0;
+      int activeCompFemale = 0;
+      int activeCompUnclass = 0;
+      final Map<String, int> activeCompLangMap = {};
+      final Map<String, Map<String, int>> activeCompGenderLangMap = {};
+
+      int activeInProgCount = 0;
+      int activeInProgMale = 0;
+      int activeInProgFemale = 0;
+      int activeInProgUnclass = 0;
+      final Map<String, int> activeInProgLangMap = {};
+      final Map<String, Map<String, int>> activeInProgGenderLangMap = {};
+
+      int activeOnlyEnrCount = 0;
+      int activeOnlyEnrMale = 0;
+      int activeOnlyEnrFemale = 0;
+      int activeOnlyEnrUnclass = 0;
+      final Map<String, int> activeOnlyEnrLangMap = {};
+      final Map<String, Map<String, int>> activeOnlyEnrGenderLangMap = {};
+
       for (final item in validEnrolled) {
         final uId = item.userId;
         final cId = item.courseId;
@@ -731,6 +811,14 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
         // Evita duplicati dello stesso utente nello stesso corso
         if (!processedCourseUser.add('$cId-$uId')) continue;
+
+        final cType = resolveCourseType(cId);
+        totalActiveCourseEnrollments++;
+        if (cType == 'async') {
+          activeEnrAsync++;
+        } else {
+          activeEnrSync++;
+        }
 
         final c = coursesMap[cId];
         final cName = (c?.fullname?.trim().isNotEmpty == true)
@@ -748,23 +836,59 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
             courseId: cId,
             courseName: cName,
             courseShortname: cShort,
-            courseType: resolveCourseType(cId),
+            courseType: cType,
           ),
         );
 
-        if (completedCourseUserSet.contains('$cId-$uId')) {
+        final isComp = completedCourseUserSet.contains('$cId-$uId');
+        final isInProg = !isComp && startedCourseUserSet.contains('$cId-$uId');
+
+        if (isComp) {
           stat.completedCount++;
+          activeEnrCompleted++;
+        } else if (isInProg) {
+          activeInProgCount++;
+        } else {
+          activeOnlyEnrCount++;
         }
 
         final u = usersMap[uId];
+        final String genderKey;
         if (u != null) {
           final rawGender = _getCustomFieldValue(u, ['gender', 'sesso', 'genere'])?.trim().toLowerCase() ?? '';
           if (rawGender == 'm' || rawGender.startsWith('masch') || rawGender == 'male') {
             stat.maleCount++;
+            activeEnrMale++;
+            genderKey = 'M';
+            if (isComp) {
+              activeCompMale++;
+            } else if (isInProg) {
+              activeInProgMale++;
+            } else {
+              activeOnlyEnrMale++;
+            }
           } else if (rawGender == 'f' || rawGender.startsWith('femm') || rawGender == 'female') {
             stat.femaleCount++;
+            activeEnrFemale++;
+            genderKey = 'F';
+            if (isComp) {
+              activeCompFemale++;
+            } else if (isInProg) {
+              activeInProgFemale++;
+            } else {
+              activeOnlyEnrFemale++;
+            }
           } else {
             stat.unclassifiedCount++;
+            activeEnrUnclass++;
+            genderKey = 'N.C.';
+            if (isComp) {
+              activeCompUnclass++;
+            } else if (isInProg) {
+              activeInProgUnclass++;
+            } else {
+              activeOnlyEnrUnclass++;
+            }
           }
 
           final rawLang = _getCustomFieldValue(u, [
@@ -780,9 +904,76 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
               ? rawLang.trim().toUpperCase()
               : 'N.D.';
           stat.langCounts[userLang] = (stat.langCounts[userLang] ?? 0) + 1;
+          activeEnrLangMap[userLang] = (activeEnrLangMap[userLang] ?? 0) + 1;
+          activeEnrGenderLangMap.putIfAbsent(userLang, () => {})[genderKey] =
+              (activeEnrGenderLangMap[userLang]![genderKey] ?? 0) + 1;
+
+          if (isComp) {
+            activeCompLangMap[userLang] = (activeCompLangMap[userLang] ?? 0) + 1;
+            activeCompGenderLangMap.putIfAbsent(userLang, () => {})[genderKey] =
+                (activeCompGenderLangMap[userLang]![genderKey] ?? 0) + 1;
+          } else if (isInProg) {
+            activeInProgLangMap[userLang] = (activeInProgLangMap[userLang] ?? 0) + 1;
+            activeInProgGenderLangMap.putIfAbsent(userLang, () => {})[genderKey] =
+                (activeInProgGenderLangMap[userLang]![genderKey] ?? 0) + 1;
+          } else {
+            activeOnlyEnrLangMap[userLang] = (activeOnlyEnrLangMap[userLang] ?? 0) + 1;
+            activeOnlyEnrGenderLangMap.putIfAbsent(userLang, () => {})[genderKey] =
+                (activeOnlyEnrGenderLangMap[userLang]![genderKey] ?? 0) + 1;
+          }
         } else {
           stat.unclassifiedCount++;
+          activeEnrUnclass++;
+          genderKey = 'N.C.';
+          if (isComp) {
+            activeCompUnclass++;
+          } else if (isInProg) {
+            activeInProgUnclass++;
+          } else {
+            activeOnlyEnrUnclass++;
+          }
+
           stat.langCounts['N.D.'] = (stat.langCounts['N.D.'] ?? 0) + 1;
+          activeEnrLangMap['N.D.'] = (activeEnrLangMap['N.D.'] ?? 0) + 1;
+          activeEnrGenderLangMap.putIfAbsent('N.D.', () => {})[genderKey] =
+              (activeEnrGenderLangMap['N.D.']![genderKey] ?? 0) + 1;
+
+          if (isComp) {
+            activeCompLangMap['N.D.'] = (activeCompLangMap['N.D.'] ?? 0) + 1;
+            activeCompGenderLangMap.putIfAbsent('N.D.', () => {})[genderKey] =
+                (activeCompGenderLangMap['N.D.']![genderKey] ?? 0) + 1;
+          } else if (isInProg) {
+            activeInProgLangMap['N.D.'] = (activeInProgLangMap['N.D.'] ?? 0) + 1;
+            activeInProgGenderLangMap.putIfAbsent('N.D.', () => {})[genderKey] =
+                (activeInProgGenderLangMap['N.D.']![genderKey] ?? 0) + 1;
+          } else {
+            activeOnlyEnrLangMap['N.D.'] = (activeOnlyEnrLangMap['N.D.'] ?? 0) + 1;
+            activeOnlyEnrGenderLangMap.putIfAbsent('N.D.', () => {})[genderKey] =
+                (activeOnlyEnrGenderLangMap['N.D.']![genderKey] ?? 0) + 1;
+          }
+        }
+      }
+
+      final Map<String, int> activeOtherLangMap = {};
+      final Map<String, Map<String, int>> activeOtherGenderLangMap = {};
+      for (final e in activeInProgLangMap.entries) {
+        activeOtherLangMap[e.key] = (activeOtherLangMap[e.key] ?? 0) + e.value;
+      }
+      for (final e in activeOnlyEnrLangMap.entries) {
+        activeOtherLangMap[e.key] = (activeOtherLangMap[e.key] ?? 0) + e.value;
+      }
+      for (final e in activeInProgGenderLangMap.entries) {
+        final lang = e.key;
+        for (final g in e.value.entries) {
+          activeOtherGenderLangMap.putIfAbsent(lang, () => {})[g.key] =
+              (activeOtherGenderLangMap[lang]![g.key] ?? 0) + g.value;
+        }
+      }
+      for (final e in activeOnlyEnrGenderLangMap.entries) {
+        final lang = e.key;
+        for (final g in e.value.entries) {
+          activeOtherGenderLangMap.putIfAbsent(lang, () => {})[g.key] =
+              (activeOtherGenderLangMap[lang]![g.key] ?? 0) + g.value;
         }
       }
 
@@ -1022,6 +1213,38 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           _onlyEnrolledSync = onlyEnrSync;
           _onlyEnrolledAsync = onlyEnrAsync;
           _onlyEnrolledLangCounts = onlyEnrLangMap;
+          _activeCourseEnrollmentsTotal = totalActiveCourseEnrollments;
+          _activeCourseEnrollmentsMale = activeEnrMale;
+          _activeCourseEnrollmentsFemale = activeEnrFemale;
+          _activeCourseEnrollmentsUnclassified = activeEnrUnclass;
+          _activeCourseEnrollmentsCompleted = activeEnrCompleted;
+          _activeCourseEnrollmentsSync = activeEnrSync;
+          _activeCourseEnrollmentsAsync = activeEnrAsync;
+          _activeCourseEnrollmentsLangCounts = activeEnrLangMap;
+          _activeCourseEnrollmentsGenderLangCounts = activeEnrGenderLangMap;
+
+          _activeEnrCompMale = activeCompMale;
+          _activeEnrCompFemale = activeCompFemale;
+          _activeEnrCompUnclass = activeCompUnclass;
+          _activeEnrCompLangCounts = activeCompLangMap;
+          _activeEnrCompGenderLangCounts = activeCompGenderLangMap;
+
+          _activeEnrInProgress = activeInProgCount;
+          _activeEnrInProgMale = activeInProgMale;
+          _activeEnrInProgFemale = activeInProgFemale;
+          _activeEnrInProgUnclass = activeInProgUnclass;
+          _activeEnrInProgLangCounts = activeInProgLangMap;
+          _activeEnrInProgGenderLangCounts = activeInProgGenderLangMap;
+
+          _activeEnrOnlyEnrolled = activeOnlyEnrCount;
+          _activeEnrOnlyEnrMale = activeOnlyEnrMale;
+          _activeEnrOnlyEnrFemale = activeOnlyEnrFemale;
+          _activeEnrOnlyEnrUnclass = activeOnlyEnrUnclass;
+          _activeEnrOnlyEnrLangCounts = activeOnlyEnrLangMap;
+          _activeEnrOnlyEnrGenderLangCounts = activeOnlyEnrGenderLangMap;
+
+          _activeEnrOtherLangCounts = activeOtherLangMap;
+          _activeEnrOtherGenderLangCounts = activeOtherGenderLangMap;
           _courseActiveStats = sortedCourseStats;
           _partnerActiveStats = sortedPartnerStats;
           _ageActiveStats = sortedAgeStats;
@@ -1120,6 +1343,10 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
                 // Grafico Stato Avanzamento Utenti Attivi (Completati, In corso, Solo iscritti)
                 _buildActiveUsersProgressChart(),
+                const SizedBox(height: 28),
+
+                // Grafico Distribuzione Totale Iscrizioni Corsi (Utenti Attivi)
+                _buildTotalCourseEnrollmentsActiveChart(),
                 const SizedBox(height: 28),
 
                 // Grafico Distribuzione Iscrizioni per Corso (Utenti Attivi con Gender)
@@ -3772,6 +3999,907 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           ],
         ],
       ),
+    );
+  }
+
+  // --- Grafico Distribuzione Totale Iscrizioni Corsi (Utenti Attivi) ---
+  Widget _buildTotalCourseEnrollmentsActiveChart() {
+    final total = _activeCourseEnrollmentsTotal;
+    final compPct = total > 0 ? (_activeCourseEnrollmentsCompleted / total * 100) : 0.0;
+    final otherPct = total > 0 ? (_activeEnrOther / total * 100) : 0.0;
+    final inProgPct = total > 0 ? (_activeEnrInProgress / total * 100) : 0.0;
+    final onlyEnrPct = total > 0 ? (_activeEnrOnlyEnrolled / total * 100) : 0.0;
+
+    // Determinazione metriche in base al filtro selezionato
+    final int currentTotal;
+    final int currentMale;
+    final int currentFemale;
+    final int currentUnclass;
+    final Map<String, int> currentLangCounts;
+    final Map<String, Map<String, int>> currentGenderLangCounts;
+    final String currentCohortTitle;
+
+    switch (_activeCourseEnrollmentFilter) {
+      case 'completed':
+        currentTotal = _activeCourseEnrollmentsCompleted;
+        currentMale = _activeEnrCompMale;
+        currentFemale = _activeEnrCompFemale;
+        currentUnclass = _activeEnrCompUnclass;
+        currentLangCounts = _activeEnrCompLangCounts;
+        currentGenderLangCounts = _activeEnrCompGenderLangCounts;
+        currentCohortTitle = 'Iscrizioni Completate';
+        break;
+      case 'other':
+        currentTotal = _activeEnrOther;
+        currentMale = _activeEnrOtherMale;
+        currentFemale = _activeEnrOtherFemale;
+        currentUnclass = _activeEnrOtherUnclass;
+        currentLangCounts = _activeEnrOtherLangCounts;
+        currentGenderLangCounts = _activeEnrOtherGenderLangCounts;
+        currentCohortTitle = 'Altri (In corso + Solo iscritti)';
+        break;
+      case 'in_progress':
+        currentTotal = _activeEnrInProgress;
+        currentMale = _activeEnrInProgMale;
+        currentFemale = _activeEnrInProgFemale;
+        currentUnclass = _activeEnrInProgUnclass;
+        currentLangCounts = _activeEnrInProgLangCounts;
+        currentGenderLangCounts = _activeEnrInProgGenderLangCounts;
+        currentCohortTitle = 'Iscrizioni In Corso';
+        break;
+      case 'only_enrolled':
+        currentTotal = _activeEnrOnlyEnrolled;
+        currentMale = _activeEnrOnlyEnrMale;
+        currentFemale = _activeEnrOnlyEnrFemale;
+        currentUnclass = _activeEnrOnlyEnrUnclass;
+        currentLangCounts = _activeEnrOnlyEnrLangCounts;
+        currentGenderLangCounts = _activeEnrOnlyEnrGenderLangCounts;
+        currentCohortTitle = 'Solo Iscritti';
+        break;
+      case 'all':
+      default:
+        currentTotal = _activeCourseEnrollmentsTotal;
+        currentMale = _activeCourseEnrollmentsMale;
+        currentFemale = _activeCourseEnrollmentsFemale;
+        currentUnclass = _activeCourseEnrollmentsUnclassified;
+        currentLangCounts = _activeCourseEnrollmentsLangCounts;
+        currentGenderLangCounts = _activeCourseEnrollmentsGenderLangCounts;
+        currentCohortTitle = 'Tutte le Iscrizioni Attive';
+        break;
+    }
+
+    final malePct = currentTotal > 0 ? (currentMale / currentTotal) : 0.0;
+    final femalePct = currentTotal > 0 ? (currentFemale / currentTotal) : 0.0;
+    final unclassPct = currentTotal > 0 ? (currentUnclass / currentTotal) : 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(4),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con Titolo, Sottotitolo e Badge informativi
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 820;
+
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withAlpha(16),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.school_rounded, color: AppTheme.primaryBlue, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'DISTRIBUZIONE TOTALE ISCRIZIONI CORSI (UTENTI ATTIVI)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.6,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Confronto tra Completati e Altri (In corso + Solo iscritti), con ripartizione per genere e lingua',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final badgesWidget = Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // Badge Totale Iscrizioni Attive
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.people_alt_rounded, size: 14, color: Color(0xFF2563EB)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$total Iscrizioni Attive',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1D4ED8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Badge Completate
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFF86EFAC)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF16A34A)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$_activeCourseEnrollmentsCompleted Completate (${compPct.toStringAsFixed(1)}%)',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF15803D),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Badge Altri
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.pending_actions_rounded, size: 14, color: Color(0xFFD97706)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$_activeEnrOther Altri (${otherPct.toStringAsFixed(1)}%)',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFB45309),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Badge Sincrono / Asincrono
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFAF5FF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFE9D5FF)),
+                    ),
+                    child: Text(
+                      'Sync: $_activeCourseEnrollmentsSync • Async: $_activeCourseEnrollmentsAsync',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF7E22CE),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 12),
+                    badgesWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  badgesWidget,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 18),
+
+          // --- 1. Macro Barra Proporzionale di Avanzamento Iscrizioni ---
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Stato Iscrizioni Attive (Completati vs Altri)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.4,
+                      color: Color(0xFF334155),
+                    ),
+                  ),
+                  Text(
+                    'Totale: $total iscrizioni attive',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  height: 16,
+                  width: double.infinity,
+                  color: Colors.grey.shade200,
+                  child: total == 0
+                      ? const SizedBox.shrink()
+                      : Row(
+                          children: [
+                            if (_activeCourseEnrollmentsCompleted > 0)
+                              Expanded(
+                                flex: _activeCourseEnrollmentsCompleted,
+                                child: Container(color: const Color(0xFF10B981)),
+                              ),
+                            if (_activeEnrInProgress > 0)
+                              Expanded(
+                                flex: _activeEnrInProgress,
+                                child: Container(color: const Color(0xFFF59E0B)),
+                              ),
+                            if (_activeEnrOnlyEnrolled > 0)
+                              Expanded(
+                                flex: _activeEnrOnlyEnrolled,
+                                child: Container(color: const Color(0xFF94A3B8)),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 16,
+                runSpacing: 6,
+                children: [
+                  _buildMacroLegendItem(const Color(0xFF10B981), 'Completati', _activeCourseEnrollmentsCompleted, compPct),
+                  _buildMacroLegendItem(const Color(0xFFF59E0B), 'In corso', _activeEnrInProgress, inProgPct),
+                  _buildMacroLegendItem(const Color(0xFF94A3B8), 'Solo iscritti', _activeEnrOnlyEnrolled, onlyEnrPct),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // --- 2. Due Card Comparative Affiancate: Completati vs Altri (In corso + Solo iscritti) ---
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 860;
+              final completedCard = _buildCohortSummaryCard(
+                title: 'Iscrizioni Completate',
+                subtitle: 'Corsi completati con successo dagli utenti attivi',
+                count: _activeCourseEnrollmentsCompleted,
+                totalCohort: total,
+                maleCount: _activeEnrCompMale,
+                femaleCount: _activeEnrCompFemale,
+                unclassifiedCount: _activeEnrCompUnclass,
+                langCounts: _activeEnrCompLangCounts,
+                genderLangCounts: _activeEnrCompGenderLangCounts,
+                accentColor: const Color(0xFF10B981),
+                bgColor: const Color(0xFFF0FDF4),
+                borderColor: const Color(0xFFA7F3D0),
+                icon: Icons.check_circle_rounded,
+              );
+
+              final otherCard = _buildCohortSummaryCard(
+                title: 'Altre Iscrizioni (Non Completate)',
+                subtitle: 'In corso: $_activeEnrInProgress (${inProgPct.toStringAsFixed(1)}%) • Solo iscritti: $_activeEnrOnlyEnrolled (${onlyEnrPct.toStringAsFixed(1)}%)',
+                count: _activeEnrOther,
+                totalCohort: total,
+                maleCount: _activeEnrOtherMale,
+                femaleCount: _activeEnrOtherFemale,
+                unclassifiedCount: _activeEnrOtherUnclass,
+                langCounts: _activeEnrOtherLangCounts,
+                genderLangCounts: _activeEnrOtherGenderLangCounts,
+                accentColor: const Color(0xFFD97706),
+                bgColor: const Color(0xFFFFFBEB),
+                borderColor: const Color(0xFFFDE68A),
+                icon: Icons.pending_actions_rounded,
+              );
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: completedCard),
+                    const SizedBox(width: 16),
+                    Expanded(child: otherCard),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  completedCard,
+                  const SizedBox(height: 14),
+                  otherCard,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 22),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 16),
+
+          // --- 3. Barra Selettore Filtro Dinamico Donut & Lingue ---
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'ESPLORA DETTAGLIO COORTE:',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              Text(
+                'Visualizzazione: $currentCohortTitle',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryBlue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildEnrollmentChoiceChip('all', 'Tutte ($total)'),
+              _buildEnrollmentChoiceChip('completed', 'Completati ($_activeCourseEnrollmentsCompleted)'),
+              _buildEnrollmentChoiceChip('other', 'Altri ($_activeEnrOther)'),
+              _buildEnrollmentChoiceChip('in_progress', 'Di cui In corso ($_activeEnrInProgress)'),
+              _buildEnrollmentChoiceChip('only_enrolled', 'Di cui Solo iscritti ($_activeEnrOnlyEnrolled)'),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          // --- 4. Donut Chart + Breakdown Genere della Coorte Selezionata ---
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 660;
+
+              final donutWidget = Center(
+                child: SizedBox(
+                  width: 190,
+                  height: 190,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(
+                        size: const Size(190, 190),
+                        painter: _GenderDonutPainter(
+                          male: currentMale,
+                          female: currentFemale,
+                          unclassified: currentUnclass,
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$currentTotal',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Iscrizioni',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+
+              final breakdownWidget = Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildGenderBar(
+                    label: 'Iscrizioni Uomini (M)',
+                    count: currentMale,
+                    percentage: malePct,
+                    color: const Color(0xFF2563EB),
+                    bgColor: const Color(0xFFEFF6FF),
+                    icon: Icons.male_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGenderBar(
+                    label: 'Iscrizioni Donne (F)',
+                    count: currentFemale,
+                    percentage: femalePct,
+                    color: const Color(0xFFE11D48),
+                    bgColor: const Color(0xFFFFF1F2),
+                    icon: Icons.female_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGenderBar(
+                    label: 'Iscrizioni Non classificate',
+                    count: currentUnclass,
+                    percentage: unclassPct,
+                    color: const Color(0xFF64748B),
+                    bgColor: const Color(0xFFF8FAFC),
+                    icon: Icons.help_outline_rounded,
+                  ),
+                ],
+              );
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 16),
+                    donutWidget,
+                    const SizedBox(width: 36),
+                    Expanded(child: breakdownWidget),
+                    const SizedBox(width: 16),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  donutWidget,
+                  const SizedBox(height: 24),
+                  breakdownWidget,
+                ],
+              );
+            },
+          ),
+
+          // --- 5. Sezione Lingua Iscrizioni per la Coorte Selezionata ---
+          _buildTotalCourseEnrollmentsActiveLanguageSection(
+            total: currentTotal,
+            langCounts: currentLangCounts,
+            genderLangCounts: currentGenderLangCounts,
+            cohortName: currentCohortTitle,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnrollmentChoiceChip(String key, String label) {
+    final isSelected = _activeCourseEnrollmentFilter == key;
+    return ChoiceChip(
+      selected: isSelected,
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          color: isSelected ? Colors.white : const Color(0xFF334155),
+        ),
+      ),
+      selectedColor: AppTheme.primaryBlue,
+      backgroundColor: const Color(0xFFF8FAFC),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: isSelected ? AppTheme.primaryBlue : Colors.grey.shade300,
+        ),
+      ),
+      onSelected: (_) {
+        setState(() {
+          _activeCourseEnrollmentFilter = key;
+        });
+      },
+    );
+  }
+
+  Widget _buildCohortSummaryCard({
+    required String title,
+    required String subtitle,
+    required int count,
+    required int totalCohort,
+    required int maleCount,
+    required int femaleCount,
+    required int unclassifiedCount,
+    required Map<String, int> langCounts,
+    required Map<String, Map<String, int>> genderLangCounts,
+    required Color accentColor,
+    required Color bgColor,
+    required Color borderColor,
+    required IconData icon,
+  }) {
+    final pct = totalCohort > 0 ? (count / totalCohort * 100) : 0.0;
+    final malePct = count > 0 ? (maleCount / count * 100) : 0.0;
+    final femalePct = count > 0 ? (femaleCount / count * 100) : 0.0;
+    final unclassPct = count > 0 ? (unclassifiedCount / count * 100) : 0.0;
+
+    final sortedLangs = langCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card Comparativa
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: accentColor.withAlpha(30),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: accentColor, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Text(
+                  '$count (${pct.toStringAsFixed(1)}%)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: accentColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Colors.black12),
+          const SizedBox(height: 10),
+
+          // Riga Dettaglio Genere
+          Row(
+            children: [
+              Text(
+                'Genere: ',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    _buildMiniGenderTag('M', maleCount, const Color(0xFF2563EB)),
+                    Text(
+                      '(${malePct.toStringAsFixed(0)}%)',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 2),
+                    _buildMiniGenderTag('F', femaleCount, const Color(0xFFE11D48)),
+                    Text(
+                      '(${femalePct.toStringAsFixed(0)}%)',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                    ),
+                    if (unclassifiedCount > 0) ...[
+                      const SizedBox(width: 2),
+                      _buildMiniGenderTag('N.C.', unclassifiedCount, const Color(0xFF64748B)),
+                      Text(
+                        '(${unclassPct.toStringAsFixed(0)}%)',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Riga Dettaglio Lingue
+          if (sortedLangs.isNotEmpty) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Lingue: ',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 5,
+                    children: sortedLangs.map((e) {
+                      final lCount = e.value;
+                      final lPct = count > 0 ? (lCount / count * 100) : 0.0;
+                      final gMap = genderLangCounts[e.key] ?? {};
+                      final m = gMap['M'] ?? 0;
+                      final f = gMap['F'] ?? 0;
+                      final nc = gMap['N.C.'] ?? 0;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${e.key}: $lCount (${lPct.toStringAsFixed(0)}%)',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '• M:$m F:$f${nc > 0 ? ' NC:$nc' : ''}',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTotalCourseEnrollmentsActiveLanguageSection({
+    required int total,
+    required Map<String, int> langCounts,
+    required Map<String, Map<String, int>> genderLangCounts,
+    required String cohortName,
+  }) {
+    if (langCounts.isEmpty) return const SizedBox.shrink();
+
+    final sortedLangs = langCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 22),
+        const Divider(height: 1, color: Color(0xFFF1F5F9)),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0EA5E9).withAlpha(18),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.language_rounded, color: Color(0xFF0284C7), size: 18),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'DISTRIBUZIONE LINGUE ($cohortName)'.toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFBAE6FD)),
+              ),
+              child: Text(
+                '${sortedLangs.length} lingu${sortedLangs.length == 1 ? 'a' : 'e'}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0284C7),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: sortedLangs.map((entry) {
+            final lang = entry.key;
+            final count = entry.value;
+            final pct = total > 0 ? (count / total * 100) : 0.0;
+            final genderBreakdown = genderLangCounts[lang] ?? {};
+            final mCount = genderBreakdown['M'] ?? 0;
+            final fCount = genderBreakdown['F'] ?? 0;
+            final ncCount = genderBreakdown['N.C.'] ?? 0;
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7).withAlpha(16),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          lang,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0284C7),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$count iscrizion${count == 1 ? 'e' : 'i'}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '(${pct.toStringAsFixed(1)}%)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildMiniGenderTag('M', mCount, const Color(0xFF2563EB)),
+                      const SizedBox(width: 6),
+                      _buildMiniGenderTag('F', fCount, const Color(0xFFE11D48)),
+                      if (ncCount > 0) ...[
+                        const SizedBox(width: 6),
+                        _buildMiniGenderTag('N.C.', ncCount, const Color(0xFF64748B)),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
