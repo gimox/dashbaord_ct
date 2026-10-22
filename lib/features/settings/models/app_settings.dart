@@ -38,5 +38,6 @@ class AppSettings {
   DateTime? lastMergeWebexUsersSyncDate;
   DateTime? lastStatMdlSyncDate;
   DateTime? lastUserCourseEnrolledSyncDate;
+  DateTime? lastFeedbackForBiSyncDate;
 }
 

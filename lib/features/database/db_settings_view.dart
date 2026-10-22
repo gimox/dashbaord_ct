@@ -14,6 +14,7 @@ import '../sync/models/merge_webex_user.dart';
 import '../sync/models/stat_mdl.dart';
 import '../sync/models/user.dart';
 import '../sync/models/user_course_enrolled.dart';
+import '../sync/models/feedback_for_bi.dart';
 
 class DbSettingsView extends ConsumerStatefulWidget {
   const DbSettingsView({super.key});
@@ -32,6 +33,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   int _statMdlCount = 0;
   int _userCourseEnrolledCount = 0;
   int _courseExclusionsCount = 0;
+  int _feedbackForBiCount = 0;
   int _settingsCount = 0;
   bool _isLoading = false;
   StreamSubscription<void>? _usersSub;
@@ -43,6 +45,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   StreamSubscription<void>? _statMdlSub;
   StreamSubscription<void>? _userCourseEnrolledSub;
   StreamSubscription<void>? _courseExclusionsSub;
+  StreamSubscription<void>? _feedbackForBiSub;
   StreamSubscription<void>? _settingsSub;
 
   @override
@@ -77,6 +80,9 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _courseExclusionsSub = isar.courseExclusions.watchLazy().listen((_) {
       _refreshCounts();
     });
+    _feedbackForBiSub = isar.feedbackForBis.watchLazy().listen((_) {
+      _refreshCounts();
+    });
     _settingsSub = isar.appSettings.watchLazy().listen((_) {
       _refreshCounts();
     });
@@ -93,6 +99,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _statMdlSub?.cancel();
     _userCourseEnrolledSub?.cancel();
     _courseExclusionsSub?.cancel();
+    _feedbackForBiSub?.cancel();
     _settingsSub?.cancel();
     super.dispose();
   }
@@ -108,6 +115,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     final statMdl = await isar.statMdls.count();
     final userCourseEnrolled = await isar.userCourseEnrolleds.count();
     final courseExclusions = await isar.courseExclusions.count();
+    final feedbackForBi = await isar.feedbackForBis.count();
     final settings = await isar.appSettings.count();
     if (mounted) {
       setState(() {
@@ -120,6 +128,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         _statMdlCount = statMdl;
         _userCourseEnrolledCount = userCourseEnrolled;
         _courseExclusionsCount = courseExclusions;
+        _feedbackForBiCount = feedbackForBi;
         _settingsCount = settings;
       });
     }
@@ -356,10 +365,33 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     }
   }
 
+  Future<void> _clearFeedbackForBiTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Feedback for BI?',
+      content: 'Tutti i feedback per BI memorizzati nel database locale verranno eliminati permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.feedbackForBis.clear();
+      });
+      await ref.read(appSettingsProvider.notifier).updateFeedbackForBiSyncDate(DateTime.fromMillisecondsSinceEpoch(0));
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Feedback for BI svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _clearAllTables() async {
     final confirmed = await _showConfirmDialog(
       title: 'Eseguire Reset Completo del Database?',
-      content: 'Questa operazione svuoterà TUTTE le tabelle (Users, Categories, Courses, Badges Users, Course Info, Merge Webex Users, Stat Moduli, Iscrizioni, Esclusioni e AppSettings). Tutti i dati locali andranno persi.',
+      content: 'Questa operazione svuoterà TUTTE le tabelle (Users, Categories, Courses, Badges Users, Course Info, Merge Webex Users, Stat Moduli, Iscrizioni, Esclusioni, Feedback for BI e AppSettings). Tutti i dati locali andranno persi.',
       isDestructive: true,
     );
     if (!confirmed) return;
@@ -377,6 +409,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         await isar.statMdls.clear();
         await isar.userCourseEnrolleds.clear();
         await isar.courseExclusions.clear();
+        await isar.feedbackForBis.clear();
         await isar.appSettings.clear();
         await isar.appSettings.put(AppSettings());
       });
@@ -466,6 +499,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         _statMdlCount +
         _userCourseEnrolledCount +
         _courseExclusionsCount +
+        _feedbackForBiCount +
         _settingsCount;
 
     return Scaffold(
@@ -513,7 +547,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '10 tabelle gestite • $totalRecords record totali memorizzati',
+                                '11 tabelle gestite • $totalRecords record totali memorizzati',
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -664,6 +698,20 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
           actionColor: Colors.red.shade700,
           actionBorderColor: Colors.red.shade200,
           onAction: _clearUserCourseEnrolledTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.rate_review_outlined,
+          iconColor: const Color(0xFF0EA5E9),
+          name: 'Feedback for BI (feedback_for_bi)',
+          schema: 'FeedbackForBiSchema',
+          count: _feedbackForBiCount,
+          description: 'Feedback e valutazioni dei corsi per BI (HQ1-HQ4, commenti testuali, corso e lingua)',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearFeedbackForBiTable,
         ),
         const SizedBox(height: 12),
         _buildTableListItem(

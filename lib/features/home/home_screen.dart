@@ -10,6 +10,7 @@ import '../courses/courses_list_view.dart';
 import '../database/db_settings_view.dart';
 import '../enrollments/enrollments_list_view.dart';
 import '../exclusions/exclusions_view.dart';
+import '../feedback/feedback_list_view.dart';
 import '../settings/models/app_settings.dart';
 import '../settings/providers/app_settings_provider.dart';
 import '../settings/settings_view.dart';
@@ -76,6 +77,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return 'Esclusioni';
       case 14:
         return 'Aggiornamenti';
+      case 15:
+        return 'Feedback BI (feedback_for_bi)';
       default:
         return 'Dashboard';
     }
@@ -113,6 +116,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return 'Gestione dei corsi e delle regole di esclusione da reportistica e dashboard.';
       case 14:
         return 'Verifica e installazione nuove versioni dell\'applicazione rilasciate su GitHub.';
+      case 15:
+        return 'Monitoraggio dei feedback e valutazioni dei corsi compilati dagli utenti (HQ1-HQ4, commenti e lingua).';
       default:
         return '';
     }
@@ -254,6 +259,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               icon: Icons.analytics_outlined,
                               selectedIcon: Icons.analytics_rounded,
                               title: 'Statistiche',
+                              isCollapsed: collapsed,
+                            ),
+                            _buildNavItem(
+                              index: 15,
+                              icon: Icons.rate_review_outlined,
+                              selectedIcon: Icons.rate_review_rounded,
+                              title: 'Feedback',
                               isCollapsed: collapsed,
                             ),
 
@@ -494,6 +506,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           const EnrollmentsListView(),
                           const ExclusionsView(),
                           const UpdaterView(),
+                          const FeedbackListView(),
                         ],
                       ),
                     ),

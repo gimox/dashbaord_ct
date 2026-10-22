@@ -15,6 +15,7 @@ import 'models/merge_webex_user.dart';
 import 'models/stat_mdl.dart';
 import 'models/user.dart';
 import 'models/user_course_enrolled.dart';
+import 'models/feedback_for_bi.dart';
 
 class SyncSettingsView extends ConsumerStatefulWidget {
   const SyncSettingsView({super.key});
@@ -72,6 +73,12 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   String? _userCourseEnrolledSyncSuccessMessage;
   StreamSubscription<void>? _userCourseEnrolledSub;
 
+  bool _isFeedbackForBiSyncing = false;
+  int _localFeedbackForBiCount = 0;
+  String? _feedbackForBiSyncErrorMessage;
+  String? _feedbackForBiSyncSuccessMessage;
+  StreamSubscription<void>? _feedbackForBiSub;
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +108,9 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     _userCourseEnrolledSub = isar.userCourseEnrolleds.watchLazy().listen((_) {
       _refreshLocalCount();
     });
+    _feedbackForBiSub = isar.feedbackForBis.watchLazy().listen((_) {
+      _refreshLocalCount();
+    });
   }
 
   @override
@@ -113,6 +123,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     _mergeWebexUsersSub?.cancel();
     _statMdlSub?.cancel();
     _userCourseEnrolledSub?.cancel();
+    _feedbackForBiSub?.cancel();
     super.dispose();
   }
 
@@ -126,6 +137,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     final mergeWebexUsersCount = await isar.mergeWebexUsers.count();
     final statMdlCount = await isar.statMdls.count();
     final userCourseEnrolledCount = await isar.userCourseEnrolleds.count();
+    final feedbackForBiCount = await isar.feedbackForBis.count();
     if (mounted) {
       setState(() {
         _localUsersCount = count;
@@ -136,6 +148,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         _localMergeWebexUsersCount = mergeWebexUsersCount;
         _localStatMdlCount = statMdlCount;
         _localUserCourseEnrolledCount = userCourseEnrolledCount;
+        _localFeedbackForBiCount = feedbackForBiCount;
       });
     }
   }
@@ -175,6 +188,10 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             settings.lastUserCourseEnrolledSyncDate!.millisecondsSinceEpoch > 0
         ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastUserCourseEnrolledSyncDate!)
         : 'Mai eseguito';
+    final lastFeedbackForBiSyncText = settings.lastFeedbackForBiSyncDate != null &&
+            settings.lastFeedbackForBiSyncDate!.millisecondsSinceEpoch > 0
+        ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastFeedbackForBiSyncDate!)
+        : 'Mai eseguito';
 
     final totalRecords = _localUsersCount +
         _localCategoriesCount +
@@ -183,7 +200,8 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         _localCourseInfoCount +
         _localMergeWebexUsersCount +
         _localStatMdlCount +
-        _localUserCourseEnrolledCount;
+        _localUserCourseEnrolledCount +
+        _localFeedbackForBiCount;
     final isAnySyncing = _isSyncing ||
         _isCategoriesSyncing ||
         _isCoursesSyncing ||
@@ -191,7 +209,8 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         _isCourseInfoSyncing ||
         _isMergeWebexUsersSyncing ||
         _isStatMdlSyncing ||
-        _isUserCourseEnrolledSyncing;
+        _isUserCourseEnrolledSyncing ||
+        _isFeedbackForBiSyncing;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -238,7 +257,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '8 collezioni API collegate • $totalRecords record totali in locale',
+                                '9 collezioni API collegate • $totalRecords record totali in locale',
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -394,6 +413,21 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   onSync: _syncUserCourseEnrolled,
                   errorMessage: _userCourseEnrolledSyncErrorMessage,
                   successMessage: _userCourseEnrolledSyncSuccessMessage,
+                ),
+                const SizedBox(height: 14),
+
+                _buildSyncListItem(
+                  icon: Icons.rate_review_outlined,
+                  iconColor: const Color(0xFF0EA5E9),
+                  title: 'Feedback for BI (feedback_for_bi)',
+                  endpoint: '/feedback_for_bi',
+                  description: 'Scarica i feedback e le valutazioni dei corsi per BI (HQ1-HQ4, commenti e lingua).',
+                  lastSyncText: lastFeedbackForBiSyncText,
+                  localCountText: '$_localFeedbackForBiCount feedback',
+                  isSyncing: _isFeedbackForBiSyncing,
+                  onSync: _syncFeedbackForBi,
+                  errorMessage: _feedbackForBiSyncErrorMessage,
+                  successMessage: _feedbackForBiSyncSuccessMessage,
                 ),
               ],
             ),
@@ -638,6 +672,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     await _syncMergeWebexUsers();
     await _syncStatMdl();
     await _syncUserCourseEnrolled();
+    await _syncFeedbackForBi();
   }
 
   Future<void> _syncUsers() async {
@@ -1651,6 +1686,127 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     } finally {
       if (mounted) {
         setState(() => _isUserCourseEnrolledSyncing = false);
+      }
+    }
+  }
+
+  Future<void> _syncFeedbackForBi() async {
+    final settings = ref.read(appSettingsProvider);
+    final baseUrl = settings.apiBaseUrl.trim();
+    final username = settings.apiUsername.trim();
+    final password = settings.apiPassword;
+
+    if (baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Configura prima il Base URL nel menu Impostazioni -> API SERVER.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isFeedbackForBiSyncing = true;
+      _feedbackForBiSyncErrorMessage = null;
+      _feedbackForBiSyncSuccessMessage = null;
+    });
+
+    try {
+      String fullUrl = baseUrl;
+      if (!fullUrl.endsWith('/')) {
+        fullUrl += '/feedback_for_bi';
+      } else {
+        fullUrl += 'feedback_for_bi';
+      }
+
+      final uri = Uri.parse(fullUrl);
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 45);
+
+      if (settings.bypassSslVerification) {
+        client.badCertificateCallback = (cert, host, port) => true;
+      }
+
+      final request = await client.getUrl(uri);
+
+      if (username.isNotEmpty || password.isNotEmpty) {
+        final credentials = base64Encode(utf8.encode('$username:$password'));
+        request.headers.set(HttpHeaders.authorizationHeader, 'Basic $credentials');
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final dynamic decoded = jsonDecode(responseBody);
+        List<dynamic> rawList = [];
+
+        if (decoded is List) {
+          rawList = decoded;
+        } else if (decoded is Map) {
+          final map = decoded;
+          if (map['feed'] is List) {
+            rawList = map['feed'] as List;
+          } else if (map['feedback_for_bi'] is List) {
+            rawList = map['feedback_for_bi'] as List;
+          } else if (map['elements'] is List) {
+            rawList = map['elements'] as List;
+          } else if (map['data'] is List) {
+            rawList = map['data'] as List;
+          } else if (map['records'] is List) {
+            rawList = map['records'] as List;
+          } else if (map['results'] is List) {
+            rawList = map['results'] as List;
+          }
+        }
+
+        final List<FeedbackForBi> feedbackList = [];
+        for (final item in rawList) {
+          if (item is Map) {
+            try {
+              feedbackList.add(FeedbackForBi.fromJson(Map<String, dynamic>.from(item)));
+            } catch (e) {
+              debugPrint('[Sync FeedbackForBi] Errore parsing item: $e');
+            }
+          }
+        }
+
+        if (feedbackList.isEmpty) {
+          setState(() {
+            _feedbackForBiSyncErrorMessage =
+                'Nessun feedback valido estratto dalla risposta del server.\n'
+                'Risposta ricevuta: ${responseBody.length > 250 ? '${responseBody.substring(0, 250)}...' : responseBody}';
+          });
+          return;
+        }
+
+        final isar = ref.read(isarProvider);
+        await isar.writeTxn(() async {
+          await isar.feedbackForBis.clear();
+          await isar.feedbackForBis.putAll(feedbackList);
+        });
+
+        final now = DateTime.now();
+        await ref.read(appSettingsProvider.notifier).updateFeedbackForBiSyncDate(now);
+        await _refreshLocalCount();
+
+        setState(() {
+          _feedbackForBiSyncSuccessMessage =
+              'Sincronizzazione completata con successo: ${feedbackList.length} feedback salvati nel database!';
+        });
+      } else {
+        setState(() {
+          _feedbackForBiSyncErrorMessage = 'Risposta HTTP ${response.statusCode}: $responseBody';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _feedbackForBiSyncErrorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isFeedbackForBiSyncing = false);
       }
     }
   }

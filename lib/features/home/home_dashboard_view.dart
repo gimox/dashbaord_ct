@@ -17,6 +17,9 @@ import 'services/active_users_progress_excel_exporter.dart';
 import 'services/course_active_stats_excel_exporter.dart';
 import 'services/partner_active_stats_excel_exporter.dart';
 import 'services/age_active_stats_excel_exporter.dart';
+import '../sync/models/feedback_for_bi.dart';
+import 'models/feedback_dashboard_stat.dart';
+import 'services/feedback_dashboard_stats_excel_exporter.dart';
 
 class HomeDashboardView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToSync;
@@ -132,11 +135,22 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
   List<AgeActiveStat> _ageActiveStats = [];
   bool _isExportingAge = false;
+
+  // Statistiche Feedback
+  List<FeedbackLangStat> _feedbackLangStats = [];
+  List<CourseFeedbackStat> _courseFeedbackStats = [];
+  double _overallFeedbackAverage = 0.0;
+  int _totalFeedbackCount = 0;
+  bool _isExportingFeedback = false;
+  bool _showAllFeedbackCourses = false;
+  String _feedbackCourseSearchQuery = '';
+
   StreamSubscription<void>? _statMdlSub;
   StreamSubscription<void>? _enrolledSub;
   StreamSubscription<void>? _usersSub;
   StreamSubscription<void>? _coursesSub;
   StreamSubscription<void>? _exclusionsSub;
+  StreamSubscription<void>? _feedbackSub;
 
   @override
   void initState() {
@@ -158,6 +172,9 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     _exclusionsSub = isar.courseExclusions.watchLazy().listen((_) {
       _loadAllData();
     });
+    _feedbackSub = isar.feedbackForBis.watchLazy().listen((_) {
+      _loadAllData();
+    });
   }
 
   @override
@@ -167,6 +184,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     _usersSub?.cancel();
     _coursesSub?.cancel();
     _exclusionsSub?.cancel();
+    _feedbackSub?.cancel();
     super.dispose();
   }
 
@@ -274,6 +292,51 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  Future<void> _exportFeedbackToExcel() async {
+    if ((_feedbackLangStats.isEmpty && _courseFeedbackStats.isEmpty) || _isExportingFeedback) return;
+    setState(() => _isExportingFeedback = true);
+    try {
+      final path = await FeedbackDashboardStatsExcelExporter.exportStats(
+        langStats: _feedbackLangStats,
+        courseStats: _courseFeedbackStats,
+      );
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    kIsWeb ? 'Esportazione statistiche feedback completata' : 'File salvato con successo: $path',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'esportazione Excel Feedback: $e'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExportingFeedback = false);
     }
   }
 
@@ -1179,6 +1242,67 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
         ));
       }
 
+      // 7. Statistiche Feedback (feedback_for_bi) per Lingua e per Corso
+      final rawFeedback = await isar.feedbackForBis.where().findAll();
+      final validFeedback = rawFeedback.where((f) {
+        final cId = f.courseId;
+        if (cId != null && excludedCourseIds.contains(cId)) return false;
+        return true;
+      }).toList();
+
+      final Map<String, FeedbackLangStat> langStatsMap = {};
+      final Map<int, CourseFeedbackStat> courseFeedbackMap = {};
+      int totalFeedbacks = 0;
+      double globalFeedbackSum = 0.0;
+      int globalFeedbackRatings = 0;
+
+      for (final f in validFeedback) {
+        final rawLang = (f.lang?.trim().isNotEmpty == true) ? f.lang!.trim().toUpperCase() : 'N.D.';
+        final hasText = (f.text?.trim().isNotEmpty == true && f.text!.trim().toLowerCase() != 'no');
+
+        // Aggiorna statistiche per lingua generale
+        final lStat = langStatsMap.putIfAbsent(rawLang, () => FeedbackLangStat(lang: rawLang));
+        lStat.addFeedback(hq1: f.hq1, hq2: f.hq2, hq3: f.hq3, hq4: f.hq4, hasText: hasText);
+
+        for (final r in [f.hq1, f.hq2, f.hq3, f.hq4]) {
+          if (r != null && r > 0) {
+            globalFeedbackSum += r;
+            globalFeedbackRatings++;
+          }
+        }
+        totalFeedbacks++;
+
+        // Aggiorna statistiche per corso
+        final cId = f.courseId ?? 0;
+        final c = coursesMap[cId];
+        final cName = (c?.fullname?.trim().isNotEmpty == true)
+            ? c!.fullname!.trim()
+            : (f.courseName?.trim().isNotEmpty == true
+                ? f.courseName!.trim()
+                : (statCourseNames[cId] ?? 'Corso #$cId'));
+        final cShort = (c?.shortname?.trim().isNotEmpty == true)
+            ? c!.shortname!.trim()
+            : (statCourseShorts[cId] ?? 'ID: $cId');
+
+        final cStat = courseFeedbackMap.putIfAbsent(
+          cId,
+          () => CourseFeedbackStat(
+            courseId: cId,
+            courseName: cName,
+            courseShortname: cShort,
+          ),
+        );
+        cStat.addFeedback(lang: rawLang, hq1: f.hq1, hq2: f.hq2, hq3: f.hq3, hq4: f.hq4, hasText: hasText);
+      }
+
+      final sortedFeedbackLangStats = langStatsMap.values.toList()
+        ..sort((a, b) => b.count.compareTo(a.count));
+
+      final sortedCourseFeedbackStats = courseFeedbackMap.values.toList()
+        ..sort((a, b) => b.totalFeedbackCount.compareTo(a.totalFeedbackCount));
+
+      final overallFeedbackAvg = globalFeedbackRatings > 0 ? (globalFeedbackSum / globalFeedbackRatings) : 0.0;
+
       if (mounted) {
         setState(() {
           _participatingUsersCount = uniqueParticipatingUsers.length;
@@ -1249,6 +1373,12 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           _partnerActiveStats = sortedPartnerStats;
           _ageActiveStats = sortedAgeStats;
           _activeUserDetails = activeUserDetailsList;
+
+          _feedbackLangStats = sortedFeedbackLangStats;
+          _courseFeedbackStats = sortedCourseFeedbackStats;
+          _overallFeedbackAverage = overallFeedbackAvg;
+          _totalFeedbackCount = totalFeedbacks;
+
           _isLoading = false;
         });
       }
@@ -1351,6 +1481,14 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
                 // Grafico Distribuzione Iscrizioni per Corso (Utenti Attivi con Gender)
                 _buildCourseEnrollmentGenderChart(),
+                const SizedBox(height: 28),
+
+                // Statistiche Feedback: Valutazione Media per Lingua (Generale)
+                _buildOverallFeedbackByLangChart(),
+                const SizedBox(height: 28),
+
+                // Statistiche Feedback: Medie per Corso e Divise per Lingua
+                _buildCourseFeedbackByLangChart(),
               ],
             ),
           ),
@@ -5445,6 +5583,752 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                 color: textColor,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // SEZIONE STATISTICHE FEEDBACK (feedback_for_bi)
+  // ===========================================================================
+
+  Widget _buildOverallFeedbackByLangChart() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con Titolo e Badge Media Globale
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 800;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.star_rounded, color: Color(0xFFD97706), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'VALUTAZIONE MEDIA FEEDBACK PER LINGUA (GENERALE)',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Media generale delle valutazioni (HQ1-HQ4) dei questionari compilati, suddivisa per lingua',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final statsWidget = Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.stars_rounded, size: 16, color: Color(0xFFD97706)),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Media Piattaforma: ${_overallFeedbackAverage > 0 ? _overallFeedbackAverage.toStringAsFixed(2) : '-'} / 5.0',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF92400E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.rate_review_outlined, size: 16, color: Color(0xFF475569)),
+                        const SizedBox(width: 6),
+                        Text(
+                          '$_totalFeedbackCount questionari',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    statsWidget,
+                  ],
+                );
+              } else {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: titleWidget),
+                    const SizedBox(width: 16),
+                    statsWidget,
+                  ],
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 20),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 20),
+
+          if (_feedbackLangStats.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Center(
+                child: Text(
+                  'Nessun dato di feedback presente nel database locale. Esegui la sincronizzazione per visualizzare le metriche.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                ),
+              ),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final cardWidth = constraints.maxWidth >= 900
+                    ? (constraints.maxWidth - 20) / 2
+                    : constraints.maxWidth;
+
+                return Wrap(
+                  spacing: 20,
+                  runSpacing: 20,
+                  children: _feedbackLangStats.map((stat) {
+                    return SizedBox(
+                      width: cardWidth,
+                      child: _buildLangFeedbackCard(stat),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLangFeedbackCard(FeedbackLangStat stat) {
+    final avg = stat.averageScore;
+    final color = avg >= 4.0
+        ? const Color(0xFF16A34A)
+        : (avg >= 3.0 ? const Color(0xFFD97706) : const Color(0xFFDC2626));
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.primaryBlue.withValues(alpha: 0.2)),
+                    ),
+                    child: Text(
+                      stat.lang,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryBlue,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${stat.count} risposte (${stat.textCount} commenti)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: color.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.star_rounded, size: 15, color: color),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${avg.toStringAsFixed(2)} / 5.0',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          const SizedBox(height: 14),
+          _buildFeedbackHqProgressRow('HQ1 (Rilevanza & Chiarezza)', stat.avgHq1),
+          const SizedBox(height: 10),
+          _buildFeedbackHqProgressRow('HQ2 (Efficacia Docente/Materiali)', stat.avgHq2),
+          const SizedBox(height: 10),
+          _buildFeedbackHqProgressRow('HQ3 (Piattaforma & Fruibilità)', stat.avgHq3),
+          const SizedBox(height: 10),
+          _buildFeedbackHqProgressRow('HQ4 (Soddisfazione Complessiva)', stat.avgHq4),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeedbackHqProgressRow(String label, double value) {
+    final clamped = (value / 5.0).clamp(0.0, 1.0);
+    final color = value >= 4.0
+        ? const Color(0xFF16A34A)
+        : (value >= 3.0 ? const Color(0xFFD97706) : const Color(0xFFDC2626));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${value.toStringAsFixed(2)} / 5',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: clamped,
+            minHeight: 6,
+            backgroundColor: const Color(0xFFE2E8F0),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCourseFeedbackByLangChart() {
+    final query = _feedbackCourseSearchQuery.trim().toLowerCase();
+    final filtered = _courseFeedbackStats.where((c) {
+      if (query.isEmpty) return true;
+      final idStr = c.courseId.toString();
+      final name = c.courseName.toLowerCase();
+      final short = c.courseShortname.toLowerCase();
+      return idStr.contains(query) || name.contains(query) || short.contains(query);
+    }).toList();
+
+    final displayedCourses = _showAllFeedbackCourses
+        ? filtered
+        : filtered.take(8).toList();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con Titolo, Ricerca ed Export Excel
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 980;
+
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.school_rounded, color: AppTheme.primaryBlue, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'MEDIA FEEDBACK PER CORSO E SUDDIVISIONE PER LINGUA',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Valutazione media delle risposte aggregate per ID corso e dettaglio delle medie per singola lingua',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 220,
+                    height: 36,
+                    child: TextField(
+                      onChanged: (val) {
+                        setState(() {
+                          _feedbackCourseSearchQuery = val;
+                        });
+                      },
+                      style: const TextStyle(fontSize: 12),
+                      decoration: InputDecoration(
+                        hintText: 'Cerca per ID o nome...',
+                        hintStyle: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                        prefixIcon: const Icon(Icons.search, size: 16),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                      ),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: (_courseFeedbackStats.isEmpty || _isExportingFeedback)
+                        ? null
+                        : _exportFeedbackToExcel,
+                    icon: _isExportingFeedback
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16),
+                    label: const Text('Esporta Excel'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryBlue,
+                      side: BorderSide(color: AppTheme.primaryBlue.withValues(alpha: 0.5)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 16),
+                    actionsWidget,
+                  ],
+                );
+              } else {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: titleWidget),
+                    const SizedBox(width: 16),
+                    actionsWidget,
+                  ],
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 20),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 20),
+
+          if (_courseFeedbackStats.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Center(
+                child: Text(
+                  'Nessun feedback presente nel database locale.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                ),
+              ),
+            )
+          else if (displayedCourses.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Center(
+                child: Text(
+                  'Nessun corso corrisponde ai filtri di ricerca impostati.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                ),
+              ),
+            )
+          else ...[
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: displayedCourses.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 14),
+              itemBuilder: (context, index) {
+                final course = displayedCourses[index];
+                return _buildCourseFeedbackRow(index + 1, course);
+              },
+            ),
+            if (filtered.length > 8) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _showAllFeedbackCourses = !_showAllFeedbackCourses;
+                    });
+                  },
+                  icon: Icon(
+                    _showAllFeedbackCourses ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    _showAllFeedbackCourses
+                        ? 'Mostra solo i principali 8 corsi'
+                        : 'Mostra tutti i ${filtered.length} corsi',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryBlue,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCourseFeedbackRow(int rank, CourseFeedbackStat course) {
+    final avg = course.overallAverage;
+    final color = avg >= 4.0
+        ? const Color(0xFF16A34A)
+        : (avg >= 3.0 ? const Color(0xFFD97706) : const Color(0xFFDC2626));
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: rank <= 3 ? AppTheme.primaryBlue : Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '#$rank',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: rank <= 3 ? Colors.white : Colors.grey.shade700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Text(
+                  'ID: ${course.courseId}',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      course.courseName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    if (course.courseShortname.isNotEmpty && course.courseShortname != course.courseName)
+                      Text(
+                        course.courseShortname,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Badge Totale Feedback Corso
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFC7D2FE)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.reviews_outlined, size: 13, color: Color(0xFF4F46E5)),
+                    const SizedBox(width: 5),
+                    Text(
+                      '${course.totalFeedbackCount} feedback',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF4F46E5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Badge Media Corso
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: color.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.star_rounded, size: 14, color: color),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${avg.toStringAsFixed(2)} / 5.0',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          const SizedBox(height: 12),
+
+          // Suddivisione Medie per Lingua per questo Corso
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Text(
+                'Medie per Lingua:',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF475569),
+                ),
+              ),
+              ...course.sortedLanguages.map((lKey) {
+                final lStat = course.langStats[lKey]!;
+                final lAvg = lStat.averageScore;
+                final lColor = lAvg >= 4.0
+                    ? const Color(0xFF16A34A)
+                    : (lAvg >= 3.0 ? const Color(0xFFD97706) : const Color(0xFFDC2626));
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          lStat.lang,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(Icons.star_rounded, size: 12, color: lColor),
+                      const SizedBox(width: 2),
+                      Text(
+                        lAvg.toStringAsFixed(2),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: lColor,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '(${lStat.count})',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
           ),
         ],
       ),

@@ -21,6 +21,7 @@ import 'features/sync/models/merge_webex_user.dart';
 import 'features/sync/models/stat_mdl.dart';
 import 'features/sync/models/user.dart';
 import 'features/sync/models/user_course_enrolled.dart';
+import 'features/sync/models/feedback_for_bi.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,6 +67,7 @@ void main() async {
       StatMdlSchema,
       UserCourseEnrolledSchema,
       CourseExclusionSchema,
+      FeedbackForBiSchema,
     ],
     directory: dirPath ?? '',
     inspector: !kIsWeb,
@@ -141,6 +143,14 @@ void main() async {
   } catch (e) {
     debugPrint('[Isar] Disallineamento schema CourseExclusion: $e. Pulizia tabella course_exclusions.');
     await isar.writeTxn(() async => await isar.courseExclusions.clear());
+  }
+
+  // Verifica difensiva su FeedbackForBiSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.feedbackForBis.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema FeedbackForBi: $e. Pulizia tabella feedback_for_bi.');
+    await isar.writeTxn(() async => await isar.feedbackForBis.clear());
   }
 
   // Inizializzazione esclusioni corsi predefinite di default (124, 123, 1) se assenti
