@@ -49,6 +49,11 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   int _activeUnclassifiedCount = 0;
   Map<String, int> _activeLangCounts = {};
   Map<String, Map<String, int>> _activeGenderLangCounts = {};
+  Map<String, int> _activeYearCounts = {};
+  Map<String, Map<String, int>> _activeGenderYearCounts = {};
+  Map<String, Map<String, int>> _activeYearLangCounts = {};
+  Map<String, Map<String, Map<String, int>>> _activeYearGenderLangCounts = {};
+  String? _selectedGenderYear;
 
   // Totale Iscrizioni Corsi per Utenti Attivi
   String _activeCourseEnrollmentFilter = 'all'; // 'all' | 'completed' | 'other' | 'in_progress' | 'only_enrolled'
@@ -662,6 +667,10 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
       int unclassifiedCount = 0;
       final Map<String, int> activeLangMap = {};
       final Map<String, Map<String, int>> activeGenderLangMap = {};
+      final Map<String, int> activeYearMap = {};
+      final Map<String, Map<String, int>> activeGenderYearMap = {};
+      final Map<String, Map<String, int>> activeYearLangMap = {};
+      final Map<String, Map<String, Map<String, int>>> activeYearGenderLangMap = {};
       final Map<String, PartnerActiveStat> partnerStatsMap = {};
       final ageStatLe25 = AgeActiveStat(label: 'Età ≤ 25 anni', key: 'le25');
       final ageStatGt25 = AgeActiveStat(label: 'Età > 25 anni', key: 'gt25');
@@ -700,6 +709,26 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
         activeLangMap[langCode] = (activeLangMap[langCode] ?? 0) + 1;
         activeGenderLangMap.putIfAbsent(langCode, () => {})[genderKey] =
             (activeGenderLangMap[langCode]![genderKey] ?? 0) + 1;
+
+        // Aggregazione Utenti Attivi per Anno di Iscrizione (data di primo accesso u.firstaccess)
+        DateTime? firstAccessDate;
+        if (u.firstaccess != null && u.firstaccess! > 0) {
+          final val = u.firstaccess!;
+          firstAccessDate = val > 10000000000
+              ? DateTime.fromMillisecondsSinceEpoch(val)
+              : DateTime.fromMillisecondsSinceEpoch(val * 1000);
+        }
+        final yearStr = firstAccessDate != null ? firstAccessDate.year.toString() : 'N.D.';
+
+        activeYearMap[yearStr] = (activeYearMap[yearStr] ?? 0) + 1;
+        activeGenderYearMap.putIfAbsent(yearStr, () => {})[genderKey] =
+            (activeGenderYearMap[yearStr]![genderKey] ?? 0) + 1;
+        activeYearLangMap.putIfAbsent(yearStr, () => {})[langCode] =
+            (activeYearLangMap[yearStr]![langCode] ?? 0) + 1;
+        activeYearGenderLangMap
+            .putIfAbsent(yearStr, () => {})
+            .putIfAbsent(langCode, () => {})[genderKey] =
+            (activeYearGenderLangMap[yearStr]![langCode]![genderKey] ?? 0) + 1;
 
         // Aggregazione Utenti Attivi per Fascia d'Età (<= 25 / > 25)
         int? userAge = u.age;
@@ -1319,6 +1348,10 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           _activeUnclassifiedCount = unclassifiedCount;
           _activeLangCounts = activeLangMap;
           _activeGenderLangCounts = activeGenderLangMap;
+          _activeYearCounts = activeYearMap;
+          _activeGenderYearCounts = activeGenderYearMap;
+          _activeYearLangCounts = activeYearLangMap;
+          _activeYearGenderLangCounts = activeYearGenderLangMap;
           _completedMale = compM;
           _completedFemale = compF;
           _completedUnclass = compNC;
@@ -2206,10 +2239,23 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
   // --- Grafico Distribuzione Gender Utenti Attivi ---
   Widget _buildGenderDistributionChart() {
-    final total = _activeUsersCount;
-    final malePct = total > 0 ? (_activeMaleCount / total) : 0.0;
-    final femalePct = total > 0 ? (_activeFemaleCount / total) : 0.0;
-    final unclassPct = total > 0 ? (_activeUnclassifiedCount / total) : 0.0;
+    final hasYearFilter = _selectedGenderYear != null && _activeYearCounts.containsKey(_selectedGenderYear);
+    final total = hasYearFilter
+        ? (_activeYearCounts[_selectedGenderYear] ?? 0)
+        : _activeUsersCount;
+    final maleCount = hasYearFilter
+        ? (_activeGenderYearCounts[_selectedGenderYear]?['M'] ?? 0)
+        : _activeMaleCount;
+    final femaleCount = hasYearFilter
+        ? (_activeGenderYearCounts[_selectedGenderYear]?['F'] ?? 0)
+        : _activeFemaleCount;
+    final unclassCount = hasYearFilter
+        ? (_activeGenderYearCounts[_selectedGenderYear]?['N.C.'] ?? 0)
+        : _activeUnclassifiedCount;
+
+    final malePct = total > 0 ? (maleCount / total) : 0.0;
+    final femalePct = total > 0 ? (femaleCount / total) : 0.0;
+    final unclassPct = total > 0 ? (unclassCount / total) : 0.0;
 
     return Container(
       width: double.infinity,
@@ -2259,7 +2305,9 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Ripartizione per genere calcolata sui $total utenti attivi',
+                        hasYearFilter
+                            ? 'Ripartizione per genere nel $_selectedGenderYear calcolata su $total utenti attivi'
+                            : 'Ripartizione per genere calcolata sui $total utenti attivi',
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                       ),
                     ],
@@ -2279,7 +2327,9 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                     const Icon(Icons.people_outline_rounded, size: 14, color: Color(0xFF4F46E5)),
                     const SizedBox(width: 5),
                     Text(
-                      '$total Utenti Attivi',
+                      hasYearFilter
+                          ? '$total Utenti ($_selectedGenderYear)'
+                          : '$total Utenti Attivi',
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -2291,6 +2341,87 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
               ),
             ],
           ),
+          if (_activeYearCounts.length > 1) ...[
+            const SizedBox(height: 14),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  const Text(
+                    'Filtra per anno di iscrizione:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () => setState(() => _selectedGenderYear = null),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _selectedGenderYear == null
+                            ? const Color(0xFF4F46E5)
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: _selectedGenderYear == null
+                              ? const Color(0xFF4F46E5)
+                              : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Text(
+                        'Tutti gli anni ($_activeUsersCount)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _selectedGenderYear == null ? Colors.white : Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  ...(() {
+                    final sortedYears = _activeYearCounts.entries.toList()
+                      ..sort((a, b) {
+                        if (a.key == 'N.D.') return 1;
+                        if (b.key == 'N.D.') return -1;
+                        return b.key.compareTo(a.key);
+                      });
+                    return sortedYears.map((entry) {
+                      final isSel = _selectedGenderYear == entry.key;
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: InkWell(
+                          onTap: () => setState(() => _selectedGenderYear = isSel ? null : entry.key),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isSel ? const Color(0xFFD97706) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isSel ? const Color(0xFFD97706) : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Text(
+                              '${entry.key} (${entry.value})',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isSel ? Colors.white : Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    });
+                  })(),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
           const SizedBox(height: 20),
@@ -2310,9 +2441,9 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                       CustomPaint(
                         size: const Size(190, 190),
                         painter: _GenderDonutPainter(
-                          male: _activeMaleCount,
-                          female: _activeFemaleCount,
-                          unclassified: _activeUnclassifiedCount,
+                          male: maleCount,
+                          female: femaleCount,
+                          unclassified: unclassCount,
                         ),
                       ),
                       Column(
@@ -2329,7 +2460,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Attivi',
+                            hasYearFilter ? 'Attivi ($_selectedGenderYear)' : 'Attivi',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -2348,7 +2479,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                 children: [
                   _buildGenderBar(
                     label: 'Uomini (M)',
-                    count: _activeMaleCount,
+                    count: maleCount,
                     percentage: malePct,
                     color: const Color(0xFF2563EB),
                     bgColor: const Color(0xFFEFF6FF),
@@ -2357,7 +2488,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                   const SizedBox(height: 12),
                   _buildGenderBar(
                     label: 'Donne (F)',
-                    count: _activeFemaleCount,
+                    count: femaleCount,
                     percentage: femalePct,
                     color: const Color(0xFFE11D48),
                     bgColor: const Color(0xFFFFF1F2),
@@ -2366,7 +2497,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                   const SizedBox(height: 12),
                   _buildGenderBar(
                     label: 'Non classificato',
-                    count: _activeUnclassifiedCount,
+                    count: unclassCount,
                     percentage: unclassPct,
                     color: const Color(0xFF64748B),
                     bgColor: const Color(0xFFF8FAFC),
@@ -2397,17 +2528,202 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
               );
             },
           ),
+          _buildYearDistributionSection(),
           _buildLanguageDistributionSection(),
         ],
       ),
     );
   }
 
-  Widget _buildLanguageDistributionSection() {
-    if (_activeLangCounts.isEmpty) return const SizedBox.shrink();
+  Widget _buildYearDistributionSection() {
+    if (_activeYearCounts.isEmpty) return const SizedBox.shrink();
 
     final total = _activeUsersCount;
-    final sortedLangs = _activeLangCounts.entries.toList()
+    final sortedYears = _activeYearCounts.entries.toList()
+      ..sort((a, b) {
+        if (a.key == 'N.D.') return 1;
+        if (b.key == 'N.D.') return -1;
+        return b.key.compareTo(a.key);
+      });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 22),
+        const Divider(height: 1, color: Color(0xFFF1F5F9)),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withAlpha(20),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.calendar_today_rounded, color: Color(0xFFD97706), size: 18),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'DISTRIBUZIONE PER ANNO DI ISCRIZIONE (DATA PRIMO ACCESSO)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Text(
+                '${sortedYears.length} ann${sortedYears.length == 1 ? 'o' : 'i'}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFD97706),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: sortedYears.map((entry) {
+            final year = entry.key;
+            final count = entry.value;
+            final pct = total > 0 ? (count / total * 100) : 0.0;
+            final genderBreakdown = _activeGenderYearCounts[year] ?? {};
+            final mCount = genderBreakdown['M'] ?? 0;
+            final fCount = genderBreakdown['F'] ?? 0;
+            final ncCount = genderBreakdown['N.C.'] ?? 0;
+            final isSelected = _selectedGenderYear == year;
+
+            return InkWell(
+              onTap: () {
+                setState(() {
+                  _selectedGenderYear = isSelected ? null : year;
+                });
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFFFFBEB) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFFF59E0B) : Colors.grey.shade200,
+                    width: isSelected ? 1.5 : 1.0,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFFF59E0B).withAlpha(25),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD97706).withAlpha(isSelected ? 35 : 20),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.event_note_rounded, size: 13, color: Color(0xFFB45309)),
+                              const SizedBox(width: 4),
+                              Text(
+                                year,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFB45309),
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$count',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '(${pct.toStringAsFixed(1)}%)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildMiniGenderTag('M', mCount, const Color(0xFF2563EB)),
+                        const SizedBox(width: 6),
+                        _buildMiniGenderTag('F', fCount, const Color(0xFFE11D48)),
+                        if (ncCount > 0) ...[
+                          const SizedBox(width: 6),
+                          _buildMiniGenderTag('N.C.', ncCount, const Color(0xFF64748B)),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLanguageDistributionSection() {
+    final hasYearFilter = _selectedGenderYear != null && _activeYearLangCounts.containsKey(_selectedGenderYear);
+    final Map<String, int> currentLangCounts = hasYearFilter
+        ? (_activeYearLangCounts[_selectedGenderYear] ?? {})
+        : _activeLangCounts;
+    final Map<String, Map<String, int>> currentGenderLangCounts = hasYearFilter
+        ? (_activeYearGenderLangCounts[_selectedGenderYear] ?? {})
+        : _activeGenderLangCounts;
+    final total = hasYearFilter
+        ? (_activeYearCounts[_selectedGenderYear] ?? 0)
+        : _activeUsersCount;
+
+    if (currentLangCounts.isEmpty) return const SizedBox.shrink();
+
+    final sortedLangs = currentLangCounts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
     return Column(
@@ -2430,9 +2746,11 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                   child: const Icon(Icons.language_rounded, color: Color(0xFF0284C7), size: 18),
                 ),
                 const SizedBox(width: 10),
-                const Text(
-                  'DISTRIBUZIONE PER LINGUA (USER\'S PREF COURSE LANG)',
-                  style: TextStyle(
+                Text(
+                  hasYearFilter
+                      ? 'DISTRIBUZIONE PER LINGUA ($_selectedGenderYear)'
+                      : 'DISTRIBUZIONE PER LINGUA (USER\'S PREF COURSE LANG)',
+                  style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
@@ -2467,7 +2785,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
             final lang = entry.key;
             final count = entry.value;
             final pct = total > 0 ? (count / total * 100) : 0.0;
-            final genderBreakdown = _activeGenderLangCounts[lang] ?? {};
+            final genderBreakdown = currentGenderLangCounts[lang] ?? {};
             final mCount = genderBreakdown['M'] ?? 0;
             final fCount = genderBreakdown['F'] ?? 0;
             final ncCount = genderBreakdown['N.C.'] ?? 0;

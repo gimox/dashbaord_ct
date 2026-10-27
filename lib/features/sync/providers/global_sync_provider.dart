@@ -12,6 +12,7 @@ import '../models/merge_webex_user.dart';
 import '../models/stat_mdl.dart';
 import '../models/user.dart';
 import '../models/user_course_enrolled.dart';
+import '../models/feedback_for_bi.dart';
 
 class GlobalSyncState {
   final bool isSyncing;
@@ -116,7 +117,22 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
           } else if (decoded is Map) {
             final map = Map<String, dynamic>.from(decoded);
             if (map.containsKey('username')) return [map];
-            for (final key in ['users', 'categories', 'courses', 'badges_users', 'course_info', 'merge_webex_users', 'stat_mdl', 'user_course_enrolled', 'data', 'elements', 'records', 'results']) {
+            for (final key in [
+              'users',
+              'categories',
+              'courses',
+              'badges_users',
+              'course_info',
+              'merge_webex_users',
+              'stat_mdl',
+              'user_course_enrolled',
+              'feedback_for_bi',
+              'feed',
+              'data',
+              'elements',
+              'records',
+              'results',
+            ]) {
               if (map[key] is List) return map[key] as List;
             }
             for (final v in map.values) {
@@ -138,7 +154,7 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
 
     try {
       // 1. Users
-      state = state.copyWith(currentOperation: 'Sincronizzazione Utenti (1/8)...', progress: 0.125);
+      state = state.copyWith(currentOperation: 'Sincronizzazione Utenti (1/9)...', progress: 0.11);
       final usersData = await fetchEndpoint('users');
       if (usersData != null && usersData.isNotEmpty) {
         final list = <User>[];
@@ -157,7 +173,7 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
       }
 
       // 2. Categories
-      state = state.copyWith(currentOperation: 'Sincronizzazione Categorie (2/8)...', progress: 0.25);
+      state = state.copyWith(currentOperation: 'Sincronizzazione Categorie (2/9)...', progress: 0.22);
       final categoriesData = await fetchEndpoint('categories');
       if (categoriesData != null && categoriesData.isNotEmpty) {
         final list = <Category>[];
@@ -176,7 +192,7 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
       }
 
       // 3. Courses
-      state = state.copyWith(currentOperation: 'Sincronizzazione Corsi (3/8)...', progress: 0.375);
+      state = state.copyWith(currentOperation: 'Sincronizzazione Corsi (3/9)...', progress: 0.33);
       final coursesData = await fetchEndpoint('courses');
       if (coursesData != null && coursesData.isNotEmpty) {
         final list = <Course>[];
@@ -195,7 +211,7 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
       }
 
       // 4. Badges Users
-      state = state.copyWith(currentOperation: 'Sincronizzazione Badge Utenti (4/8)...', progress: 0.50);
+      state = state.copyWith(currentOperation: 'Sincronizzazione Badge Utenti (4/9)...', progress: 0.44);
       final badgesData = await fetchEndpoint('badges_users');
       if (badgesData != null && badgesData.isNotEmpty) {
         final list = <BadgeUser>[];
@@ -214,7 +230,7 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
       }
 
       // 5. Course Info
-      state = state.copyWith(currentOperation: 'Sincronizzazione Info Corsi (5/8)...', progress: 0.625);
+      state = state.copyWith(currentOperation: 'Sincronizzazione Info Corsi (5/9)...', progress: 0.55);
       final courseInfoData = await fetchEndpoint('course_info');
       if (courseInfoData != null && courseInfoData.isNotEmpty) {
         final list = <CourseInfo>[];
@@ -233,7 +249,7 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
       }
 
       // 6. Merge Webex Users
-      state = state.copyWith(currentOperation: 'Sincronizzazione Utenti Webex (6/8)...', progress: 0.75);
+      state = state.copyWith(currentOperation: 'Sincronizzazione Utenti Webex (6/9)...', progress: 0.66);
       final webexData = await fetchEndpoint('merge_webex_users');
       if (webexData != null && webexData.isNotEmpty) {
         final list = <MergeWebexUser>[];
@@ -252,7 +268,7 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
       }
 
       // 7. Stat Mdl
-      state = state.copyWith(currentOperation: 'Sincronizzazione Statistiche Mdl (7/8)...', progress: 0.875);
+      state = state.copyWith(currentOperation: 'Sincronizzazione Statistiche Mdl (7/9)...', progress: 0.77);
       final statData = await fetchEndpoint('stat_mdl');
       if (statData != null && statData.isNotEmpty) {
         final list = <StatMdl>[];
@@ -271,7 +287,7 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
       }
 
       // 8. User Course Enrolled
-      state = state.copyWith(currentOperation: 'Sincronizzazione Iscrizioni Corsi (8/8)...', progress: 1.0);
+      state = state.copyWith(currentOperation: 'Sincronizzazione Iscrizioni Corsi (8/9)...', progress: 0.88);
       final enrolledData = await fetchEndpoint('user_course_enrolled');
       if (enrolledData != null && enrolledData.isNotEmpty) {
         final list = <UserCourseEnrolled>[];
@@ -285,6 +301,28 @@ class GlobalSyncNotifier extends StateNotifier<GlobalSyncState> {
         if (list.isNotEmpty) {
           await isar.writeTxn(() async => await isar.userCourseEnrolleds.putAll(list));
           await ref.read(appSettingsProvider.notifier).updateUserCourseEnrolledSyncDate(DateTime.now());
+          totalSaved += list.length;
+        }
+      }
+
+      // 9. Feedback
+      state = state.copyWith(currentOperation: 'Sincronizzazione Feedback (9/9)...', progress: 1.0);
+      final feedbackData = await fetchEndpoint('feedback_for_bi');
+      if (feedbackData != null && feedbackData.isNotEmpty) {
+        final list = <FeedbackForBi>[];
+        for (final item in feedbackData) {
+          if (item is Map) {
+            try {
+              list.add(FeedbackForBi.fromJson(Map<String, dynamic>.from(item)));
+            } catch (_) {}
+          }
+        }
+        if (list.isNotEmpty) {
+          await isar.writeTxn(() async {
+            await isar.feedbackForBis.clear();
+            await isar.feedbackForBis.putAll(list);
+          });
+          await ref.read(appSettingsProvider.notifier).updateFeedbackForBiSyncDate(DateTime.now());
           totalSaved += list.length;
         }
       }
