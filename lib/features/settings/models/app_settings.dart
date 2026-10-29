@@ -39,5 +39,6 @@ class AppSettings {
   DateTime? lastStatMdlSyncDate;
   DateTime? lastUserCourseEnrolledSyncDate;
   DateTime? lastFeedbackForBiSyncDate;
+  DateTime? lastCourseCatalogSyncDate;
 }
 

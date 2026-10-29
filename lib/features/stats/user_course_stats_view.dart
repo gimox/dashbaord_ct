@@ -7,6 +7,8 @@ import 'package:isar_community/isar.dart';
 
 import '../../core/db/isar_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../sync/models/badge_user.dart';
+import '../sync/models/course.dart';
 import '../sync/models/stat_mdl.dart';
 import '../sync/models/user.dart';
 import 'models/user_course_stat_group.dart';
@@ -41,6 +43,7 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
 
   // Filtri Avanzati
   String? _filterStatoCorso; // null: Tutti, oppure "Completato", "In corso"
+  bool _filterCompletatiSenzaBadge = false; // true: solo corsi completati senza badge
   String? _filterTipoCorso; // null: Tutti, oppure "async", "sync"
   String? _filterGenere; // null: Tutti, oppure "M", "F"
   String? _filterProgresso; // null: Tutti, oppure "100", ">50", "<50"
@@ -73,12 +76,39 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
     final isar = ref.read(isarProvider);
     List<StatMdl> rawStats = [];
     Map<int, User> usersMap = {};
+    final Map<String, BadgeUser> userCourseBadgeMap = {};
 
     try {
       rawStats = await isar.statMdls.where().findAll();
       final usersList = await isar.users.where().findAll();
       for (final u in usersList) {
         usersMap[u.id] = u;
+      }
+
+      final allBadges = await isar.badgeUsers.where().findAll();
+      final allCourses = await isar.courses.where().findAll();
+      final Map<String, int> courseNameToId = {};
+      for (final c in allCourses) {
+        if (c.fullname != null && c.fullname!.trim().isNotEmpty) {
+          courseNameToId[c.fullname!.trim().toLowerCase()] = c.id;
+        }
+        if (c.shortname != null && c.shortname!.trim().isNotEmpty) {
+          courseNameToId[c.shortname!.trim().toLowerCase()] = c.id;
+        }
+      }
+      final Map<String, int> emailToUserId = {
+        for (final u in usersList)
+          if (u.email != null && u.email!.trim().isNotEmpty)
+            u.email!.trim().toLowerCase(): u.id,
+      };
+      for (final b in allBadges) {
+        final bName = b.badge?.trim().toLowerCase();
+        final cId = bName != null ? courseNameToId[bName] : null;
+        final uEmail = b.email?.trim().toLowerCase();
+        final uId = uEmail != null ? emailToUserId[uEmail] : null;
+        if (cId != null && uId != null) {
+          userCourseBadgeMap['${uId}_$cId'] = b;
+        }
       }
     } catch (e) {
       debugPrint('[UserCourseStatsView] Errore lettura Isar: $e');
@@ -117,6 +147,16 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
         }
       }
 
+      final badge = userCourseBadgeMap['${first.userId ?? 0}_${first.idCorso ?? 0}'];
+      final hasBadge = badge != null;
+      final originalCompleted = (first.statoCompletamentoCorso ?? '').toLowerCase() == 'completato' ||
+          first.dataCompletamentoCorso != null;
+      final isForced = hasBadge && !originalCompleted;
+      final effectiveStato = hasBadge
+          ? 'completato'
+          : first.statoCompletamentoCorso;
+      final effectiveDataComp = first.dataCompletamentoCorso ?? badge?.issuedOnDate;
+
       groups.add(UserCourseStatGroup(
         userId: first.userId,
         username: first.username ?? matchedUser?.username,
@@ -125,8 +165,8 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
         idCorso: first.idCorso,
         shorthNomeCorso: first.shorthNomeCorso,
         nomeCorso: first.nomeCorso,
-        statoCompletamentoCorso: first.statoCompletamentoCorso,
-        dataCompletamentoCorso: first.dataCompletamentoCorso,
+        statoCompletamentoCorso: effectiveStato,
+        dataCompletamentoCorso: effectiveDataComp,
         primoAccessoPiattaforma: first.primoAccessoPiattaforma,
         ultimoAccessoPiattaforma: first.ultimoAccessoPiattaforma,
         gender: userGender,
@@ -134,6 +174,8 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
         qualification: first.qualification,
         membershipOrg: first.membershipOrg,
         userCourseLang: first.userCourseLang,
+        hasBadge: hasBadge,
+        isForcedCompletedByBadge: isForced,
         activities: list,
       ));
     });
@@ -187,6 +229,11 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
             (group.userCourseLang?.toLowerCase() ?? '').contains(q);
 
         if (!matches) return false;
+      }
+
+      // Filtro Completati SENZA Badge
+      if (_filterCompletatiSenzaBadge) {
+        if (!group.isCourseCompleted || group.hasBadge) return false;
       }
 
       // Filtro Stato Corso
@@ -291,6 +338,7 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
   int get _activeFiltersCount {
     int count = 0;
     if (_filterStatoCorso != null) count++;
+    if (_filterCompletatiSenzaBadge) count++;
     if (_filterTipoCorso != null) count++;
     if (_filterGenere != null) count++;
     if (_filterProgresso != null) count++;
@@ -303,6 +351,7 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
     setState(() {
       _searchController.clear();
       _filterStatoCorso = null;
+      _filterCompletatiSenzaBadge = false;
       _filterTipoCorso = null;
       _filterGenere = null;
       _filterProgresso = null;
@@ -445,13 +494,25 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: isCompleted ? Colors.greenAccent : Colors.orangeAccent),
                         ),
-                        child: Text(
-                          isCompleted ? 'Corso Completato' : 'In Corso',
-                          style: TextStyle(
-                            color: isCompleted ? Colors.greenAccent : Colors.orangeAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              isCompleted ? 'Corso Completato' : 'In Corso',
+                              style: TextStyle(
+                                color: isCompleted ? Colors.greenAccent : Colors.orangeAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (group.isForcedCompletedByBadge) ...[
+                              const SizedBox(width: 6),
+                              const Tooltip(
+                                message: 'Stato forzato: completamento rilevato da Badge emesso',
+                                child: Icon(Icons.auto_fix_high_rounded, size: 14, color: Colors.amberAccent),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -622,6 +683,29 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
                                 Text(
                                   'Completato il: ${dateFormat.format(group.dataCompletamentoCorso!)}',
                                   style: TextStyle(fontSize: 12, color: Colors.green.shade800, fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                              if (group.isForcedCompletedByBadge) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF3C7),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFFFDE68A)),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.auto_fix_high_rounded, size: 16, color: Color(0xFFD97706)),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Stato forzato a Completato: l\'utente ha regolarmente conseguito il Badge del corso.',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ],
@@ -942,6 +1026,19 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
                             },
                             deleteIconColor: Colors.grey.shade700,
                             backgroundColor: Colors.white,
+                          ),
+                        if (_filterCompletatiSenzaBadge)
+                          InputChip(
+                            avatar: const Icon(Icons.pending_actions_rounded, size: 16, color: Color(0xFFD97706)),
+                            label: const Text('Completati senza badge'),
+                            onDeleted: () {
+                              setState(() {
+                                _filterCompletatiSenzaBadge = false;
+                                _applyFilter();
+                              });
+                            },
+                            deleteIconColor: Colors.grey.shade700,
+                            backgroundColor: const Color(0xFFFEF3C7),
                           ),
                         if (_filterTipoCorso != null)
                           InputChip(
@@ -1455,6 +1552,25 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
                                                               color: isCompleted ? Colors.green.shade800 : Colors.orange.shade800,
                                                             ),
                                                           ),
+                                                          if (group.isForcedCompletedByBadge) ...[
+                                                            const SizedBox(width: 5),
+                                                            Tooltip(
+                                                              message: 'Stato forzato: completamento rilevato da Badge emesso',
+                                                              child: Container(
+                                                                padding: const EdgeInsets.all(2),
+                                                                decoration: BoxDecoration(
+                                                                  color: const Color(0xFFFEF3C7),
+                                                                  borderRadius: BorderRadius.circular(4),
+                                                                  border: Border.all(color: const Color(0xFFFDE68A)),
+                                                                ),
+                                                                child: const Icon(
+                                                                  Icons.auto_fix_high_rounded,
+                                                                  size: 12,
+                                                                  color: Color(0xFFD97706),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ],
                                                       ),
                                                     ),
@@ -1639,26 +1755,63 @@ class _UserCourseStatsViewState extends ConsumerState<UserCourseStatsView> {
                                 children: [
                                   ChoiceChip(
                                     label: const Text('Tutti'),
-                                    selected: _filterStatoCorso == null,
+                                    selected: _filterStatoCorso == null && !_filterCompletatiSenzaBadge,
                                     onSelected: (val) {
-                                      if (val) setState(() { _filterStatoCorso = null; _applyFilter(); });
+                                      if (val) setState(() { _filterStatoCorso = null; _filterCompletatiSenzaBadge = false; _applyFilter(); });
                                     },
                                   ),
                                   ChoiceChip(
                                     label: const Text('Completato'),
-                                    selected: _filterStatoCorso == 'Completato',
+                                    selected: _filterStatoCorso == 'Completato' && !_filterCompletatiSenzaBadge,
                                     onSelected: (val) {
-                                      setState(() { _filterStatoCorso = val ? 'Completato' : null; _applyFilter(); });
+                                      setState(() {
+                                        _filterStatoCorso = val ? 'Completato' : null;
+                                        if (val) _filterCompletatiSenzaBadge = false;
+                                        _applyFilter();
+                                      });
                                     },
                                   ),
                                   ChoiceChip(
                                     label: const Text('In corso'),
-                                    selected: _filterStatoCorso == 'In corso',
+                                    selected: _filterStatoCorso == 'In corso' && !_filterCompletatiSenzaBadge,
                                     onSelected: (val) {
-                                      setState(() { _filterStatoCorso = val ? 'In corso' : null; _applyFilter(); });
+                                      setState(() {
+                                        _filterStatoCorso = val ? 'In corso' : null;
+                                        if (val) _filterCompletatiSenzaBadge = false;
+                                        _applyFilter();
+                                      });
                                     },
                                   ),
                                 ],
+                              ),
+
+                              const SizedBox(height: 12),
+                              // Filtro specifico Completati SENZA Badge
+                              FilterChip(
+                                avatar: Icon(
+                                  _filterCompletatiSenzaBadge ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
+                                  size: 16,
+                                  color: _filterCompletatiSenzaBadge ? const Color(0xFF92400E) : const Color(0xFFD97706),
+                                ),
+                                label: const Text('Completati SENZA badge'),
+                                selected: _filterCompletatiSenzaBadge,
+                                selectedColor: const Color(0xFFFEF3C7),
+                                checkmarkColor: const Color(0xFF92400E),
+                                labelStyle: TextStyle(
+                                  color: _filterCompletatiSenzaBadge ? const Color(0xFF92400E) : const Color(0xFF78350F),
+                                  fontWeight: _filterCompletatiSenzaBadge ? FontWeight.bold : FontWeight.w500,
+                                  fontSize: 12,
+                                ),
+                                side: BorderSide(
+                                  color: _filterCompletatiSenzaBadge ? const Color(0xFFF59E0B) : const Color(0xFFFDE68A),
+                                ),
+                                onSelected: (val) {
+                                  setState(() {
+                                    _filterCompletatiSenzaBadge = val;
+                                    if (val) _filterStatoCorso = null;
+                                    _applyFilter();
+                                  });
+                                },
                               ),
 
                               const Divider(height: 32),

@@ -16,6 +16,8 @@ import 'models/stat_mdl.dart';
 import 'models/user.dart';
 import 'models/user_course_enrolled.dart';
 import 'models/feedback_for_bi.dart';
+import '../catalog/models/course_catalog_item.dart';
+import '../catalog/services/course_catalog_service.dart';
 
 class SyncSettingsView extends ConsumerStatefulWidget {
   const SyncSettingsView({super.key});
@@ -79,6 +81,12 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   String? _feedbackForBiSyncSuccessMessage;
   StreamSubscription<void>? _feedbackForBiSub;
 
+  bool _isCourseCatalogSyncing = false;
+  int _localCourseCatalogCount = 0;
+  String? _courseCatalogSyncErrorMessage;
+  String? _courseCatalogSyncSuccessMessage;
+  StreamSubscription<void>? _courseCatalogSub;
+
   @override
   void initState() {
     super.initState();
@@ -111,6 +119,9 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     _feedbackForBiSub = isar.feedbackForBis.watchLazy().listen((_) {
       _refreshLocalCount();
     });
+    _courseCatalogSub = isar.courseCatalogItems.watchLazy().listen((_) {
+      _refreshLocalCount();
+    });
   }
 
   @override
@@ -124,6 +135,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     _statMdlSub?.cancel();
     _userCourseEnrolledSub?.cancel();
     _feedbackForBiSub?.cancel();
+    _courseCatalogSub?.cancel();
     super.dispose();
   }
 
@@ -138,6 +150,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     final statMdlCount = await isar.statMdls.count();
     final userCourseEnrolledCount = await isar.userCourseEnrolleds.count();
     final feedbackForBiCount = await isar.feedbackForBis.count();
+    final courseCatalogCount = await isar.courseCatalogItems.count();
     if (mounted) {
       setState(() {
         _localUsersCount = count;
@@ -149,6 +162,7 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         _localStatMdlCount = statMdlCount;
         _localUserCourseEnrolledCount = userCourseEnrolledCount;
         _localFeedbackForBiCount = feedbackForBiCount;
+        _localCourseCatalogCount = courseCatalogCount;
       });
     }
   }
@@ -192,6 +206,10 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             settings.lastFeedbackForBiSyncDate!.millisecondsSinceEpoch > 0
         ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastFeedbackForBiSyncDate!)
         : 'Mai eseguito';
+    final lastCourseCatalogSyncText = settings.lastCourseCatalogSyncDate != null &&
+            settings.lastCourseCatalogSyncDate!.millisecondsSinceEpoch > 0
+        ? DateFormat('dd/MM/yyyy HH:mm:ss').format(settings.lastCourseCatalogSyncDate!)
+        : 'Mai eseguito';
 
     final totalRecords = _localUsersCount +
         _localCategoriesCount +
@@ -201,7 +219,8 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         _localMergeWebexUsersCount +
         _localStatMdlCount +
         _localUserCourseEnrolledCount +
-        _localFeedbackForBiCount;
+        _localFeedbackForBiCount +
+        _localCourseCatalogCount;
     final isAnySyncing = _isSyncing ||
         _isCategoriesSyncing ||
         _isCoursesSyncing ||
@@ -210,7 +229,8 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         _isMergeWebexUsersSyncing ||
         _isStatMdlSyncing ||
         _isUserCourseEnrolledSyncing ||
-        _isFeedbackForBiSyncing;
+        _isFeedbackForBiSyncing ||
+        _isCourseCatalogSyncing;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -428,6 +448,21 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   onSync: _syncFeedbackForBi,
                   errorMessage: _feedbackForBiSyncErrorMessage,
                   successMessage: _feedbackForBiSyncSuccessMessage,
+                ),
+                const SizedBox(height: 14),
+
+                _buildSyncListItem(
+                  icon: Icons.menu_book_outlined,
+                  iconColor: const Color(0xFF0284C7),
+                  title: 'Catalogo Corsi & Durata Ore',
+                  endpoint: 'File Excel Catalogo / Asset',
+                  description: 'Sincronizza e incrocia il catalogo corsi dal file Excel predefinito (o importato) associando durate in ore e studio individuale ai corsi Moodle.',
+                  lastSyncText: lastCourseCatalogSyncText,
+                  localCountText: '$_localCourseCatalogCount corsi a catalogo',
+                  isSyncing: _isCourseCatalogSyncing,
+                  onSync: _syncCourseCatalog,
+                  errorMessage: _courseCatalogSyncErrorMessage,
+                  successMessage: _courseCatalogSyncSuccessMessage,
                 ),
               ],
             ),
@@ -1807,6 +1842,34 @@ class _SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     } finally {
       if (mounted) {
         setState(() => _isFeedbackForBiSyncing = false);
+      }
+    }
+  }
+
+  Future<void> _syncCourseCatalog() async {
+    setState(() {
+      _isCourseCatalogSyncing = true;
+      _courseCatalogSyncErrorMessage = null;
+      _courseCatalogSyncSuccessMessage = null;
+    });
+
+    try {
+      final isar = ref.read(isarProvider);
+      final count = await CourseCatalogService.importCatalogFromExcel(isar);
+      await ref.read(appSettingsProvider.notifier).updateCourseCatalogSyncDate(DateTime.now());
+      await _refreshLocalCount();
+
+      setState(() {
+        _courseCatalogSyncSuccessMessage =
+            'Sincronizzazione completata con successo: $count corsi a catalogo aggiornati con relative durate e mappature Moodle!';
+      });
+    } catch (e) {
+      setState(() {
+        _courseCatalogSyncErrorMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isCourseCatalogSyncing = false);
       }
     }
   }

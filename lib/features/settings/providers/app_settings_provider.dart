@@ -73,7 +73,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -113,7 +114,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -147,7 +149,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -181,7 +184,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -215,7 +219,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -249,7 +254,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -283,7 +289,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -317,7 +324,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = date
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -351,7 +359,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = date
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -385,7 +394,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = date
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -419,7 +429,43 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = date;
+      ..lastFeedbackForBiSyncDate = date
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
+
+    await _isar.writeTxn(() async {
+      await _isar.appSettings.put(updated);
+    });
+
+    state = updated;
+  }
+
+  Future<void> updateCourseCatalogSyncDate(DateTime date) async {
+    final updated = AppSettings()
+      ..id = 0
+      ..appName = state.appName
+      ..sharepointSiteName = state.sharepointSiteName
+      ..sharepointDocumentLibrary = state.sharepointDocumentLibrary
+      ..syncOnStartup = state.syncOnStartup
+      ..proxyEnabled = state.proxyEnabled
+      ..proxyAutoConfig = state.proxyAutoConfig
+      ..customProxyUrl = state.customProxyUrl
+      ..bypassSslVerification = state.bypassSslVerification
+      ..proxyUsername = state.proxyUsername
+      ..proxyPassword = state.proxyPassword
+      ..apiBaseUrl = state.apiBaseUrl
+      ..apiUsername = state.apiUsername
+      ..apiPassword = state.apiPassword
+      ..apiTestEndpoint = state.apiTestEndpoint
+      ..lastUsersSyncDate = state.lastUsersSyncDate
+      ..lastCategoriesSyncDate = state.lastCategoriesSyncDate
+      ..lastCoursesSyncDate = state.lastCoursesSyncDate
+      ..lastBadgesUsersSyncDate = state.lastBadgesUsersSyncDate
+      ..lastCourseInfoSyncDate = state.lastCourseInfoSyncDate
+      ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
+      ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
+      ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = date;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);
@@ -454,7 +500,8 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
       ..lastMergeWebexUsersSyncDate = state.lastMergeWebexUsersSyncDate
       ..lastStatMdlSyncDate = state.lastStatMdlSyncDate
       ..lastUserCourseEnrolledSyncDate = state.lastUserCourseEnrolledSyncDate
-      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate;
+      ..lastFeedbackForBiSyncDate = state.lastFeedbackForBiSyncDate
+      ..lastCourseCatalogSyncDate = state.lastCourseCatalogSyncDate;
 
     await _isar.writeTxn(() async {
       await _isar.appSettings.put(updated);

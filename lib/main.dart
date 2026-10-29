@@ -22,6 +22,8 @@ import 'features/sync/models/stat_mdl.dart';
 import 'features/sync/models/user.dart';
 import 'features/sync/models/user_course_enrolled.dart';
 import 'features/sync/models/feedback_for_bi.dart';
+import 'features/catalog/models/course_catalog_item.dart';
+import 'features/catalog/data/default_course_catalog.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,10 +70,19 @@ void main() async {
       UserCourseEnrolledSchema,
       CourseExclusionSchema,
       FeedbackForBiSchema,
+      CourseCatalogItemSchema,
     ],
     directory: dirPath ?? '',
     inspector: !kIsWeb,
   );
+
+  // Verifica difensiva su CourseCatalogItemSchema per prevenire disallineamenti di schema in sviluppo
+  try {
+    await isar.courseCatalogItems.where().findAll();
+  } catch (e) {
+    debugPrint('[Isar] Disallineamento schema CourseCatalogItem: $e. Pulizia tabella catalogo.');
+    await isar.writeTxn(() async => await isar.courseCatalogItems.clear());
+  }
 
   // Verifica difensiva su UserSchema per prevenire disallineamenti di schema in sviluppo
   try {
@@ -166,6 +177,13 @@ void main() async {
         );
       });
     }
+  }
+
+  // Inizializzazione dati catalogo corsi predefiniti se assenti (senza import da Excel)
+  try {
+    await DefaultCourseCatalog.seedIfEmpty(isar);
+  } catch (e) {
+    debugPrint('[Isar] Errore inizializzazione catalogo corsi predefinito: $e');
   }
 
   // 3. Inizializzazione Proxy Service con le impostazioni persistite

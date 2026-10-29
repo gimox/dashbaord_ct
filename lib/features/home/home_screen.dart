@@ -22,6 +22,7 @@ import '../updater/providers/app_update_provider.dart';
 import '../updater/updater_view.dart';
 import '../updater/widgets/app_update_dialog.dart';
 import '../users/users_list_view.dart';
+import '../catalog/catalog_settings_view.dart';
 import 'home_dashboard_view.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -79,6 +80,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return 'Aggiornamenti';
       case 15:
         return 'Feedback BI (feedback_for_bi)';
+      case 16:
+        return 'Catalogo Corsi & Durate';
       default:
         return 'Dashboard';
     }
@@ -118,6 +121,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return 'Verifica e installazione nuove versioni dell\'applicazione rilasciate su GitHub.';
       case 15:
         return 'Monitoraggio dei feedback e valutazioni dei corsi compilati dagli utenti (HQ1-HQ4, commenti e lingua).';
+      case 16:
+        return 'Configurazione didattica, monte ore lezioni, studio individuale e mappature Moodle.';
       default:
         return '';
     }
@@ -317,6 +322,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 title: 'Aggiornamenti',
                                 isCollapsed: true,
                               ),
+                              _buildNavItem(
+                                index: 16,
+                                icon: Icons.menu_book_outlined,
+                                selectedIcon: Icons.menu_book_rounded,
+                                title: 'Catalogo',
+                                isCollapsed: true,
+                              ),
                             ] else ...[
                               // Voce Principale: Impostazioni con Sotto-Menu
                               _buildParentSettingsItem(),
@@ -357,6 +369,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   icon: Icons.system_update_alt_rounded,
                                   selectedIcon: Icons.system_update_alt_rounded,
                                   title: 'Aggiornamenti',
+                                ),
+                                _buildSubNavItem(
+                                  index: 16,
+                                  icon: Icons.menu_book_outlined,
+                                  selectedIcon: Icons.menu_book_rounded,
+                                  title: 'Catalogo',
                                 ),
                               ],
                             ],
@@ -507,6 +525,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           const ExclusionsView(),
                           const UpdaterView(),
                           const FeedbackListView(),
+                          const CatalogSettingsView(),
                         ],
                       ),
                     ),
@@ -571,7 +590,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // Voce Genitore "Impostazioni" espandibile
   Widget _buildParentSettingsItem() {
-    final isChildSelected = (_selectedIndex >= 2 && _selectedIndex <= 5) || _selectedIndex == 13 || _selectedIndex == 14;
+    final isChildSelected = (_selectedIndex >= 2 && _selectedIndex <= 5) || _selectedIndex == 13 || _selectedIndex == 14 || _selectedIndex == 16;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: InkWell(

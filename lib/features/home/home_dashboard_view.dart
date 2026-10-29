@@ -9,6 +9,7 @@ import '../sync/models/stat_mdl.dart';
 import '../sync/models/user.dart';
 import '../sync/models/user_course_enrolled.dart';
 import '../sync/models/course.dart';
+import '../sync/models/badge_user.dart';
 import '../exclusions/models/course_exclusion.dart';
 import 'models/course_active_stat.dart';
 import 'models/partner_active_stat.dart';
@@ -20,6 +21,9 @@ import 'services/age_active_stats_excel_exporter.dart';
 import '../sync/models/feedback_for_bi.dart';
 import 'models/feedback_dashboard_stat.dart';
 import 'services/feedback_dashboard_stats_excel_exporter.dart';
+import '../catalog/models/course_catalog_item.dart';
+import 'models/dg_cnect_kpi.dart';
+import 'services/dg_cnect_excel_exporter.dart';
 
 class HomeDashboardView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToSync;
@@ -150,6 +154,12 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   bool _showAllFeedbackCourses = false;
   String _feedbackCourseSearchQuery = '';
 
+  // DG-CNECT KPIs
+  List<DgCnectKpiItem> _dgCnectKpis = [];
+  bool _isExportingDgCnect = false;
+  String _selectedDgCnectCategory = 'TUTTI';
+  StreamSubscription<void>? _catalogSub;
+
   StreamSubscription<void>? _statMdlSub;
   StreamSubscription<void>? _enrolledSub;
   StreamSubscription<void>? _usersSub;
@@ -180,6 +190,9 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     _feedbackSub = isar.feedbackForBis.watchLazy().listen((_) {
       _loadAllData();
     });
+    _catalogSub = isar.courseCatalogItems.watchLazy().listen((_) {
+      _loadAllData();
+    });
   }
 
   @override
@@ -190,7 +203,37 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
     _coursesSub?.cancel();
     _exclusionsSub?.cancel();
     _feedbackSub?.cancel();
+    _catalogSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _exportDgCnectReport() async {
+    if (_dgCnectKpis.isEmpty || _isExportingDgCnect) return;
+    setState(() => _isExportingDgCnect = true);
+    try {
+      final path = await DgCnectExcelExporter.exportReport(kpiItems: _dgCnectKpis);
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Report DG-CNECT esportato con successo in: $path'),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'esportazione del report DG-CNECT: $e'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExportingDgCnect = false);
+    }
   }
 
   Future<void> _exportPartnersToExcel() async {
@@ -554,6 +597,35 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           if (u.email?.trim().isNotEmpty == true) u.email!.trim().toLowerCase(): u.id,
       };
 
+      // Mappatura nomi e codici corsi per matching con i badge
+      final Map<String, int> courseNameToId = {};
+      for (final c in allCourses) {
+        if (c.fullname != null && c.fullname!.trim().isNotEmpty) {
+          courseNameToId[c.fullname!.trim().toLowerCase()] = c.id;
+        }
+        if (c.shortname != null && c.shortname!.trim().isNotEmpty) {
+          courseNameToId[c.shortname!.trim().toLowerCase()] = c.id;
+        }
+      }
+
+      // Integrazione Badges: se un utente ha conseguito il badge per un corso, il corso è completato
+      final allBadges = await isar.badgeUsers.where().findAll();
+      final Set<String> badgeCompletedCourseUserSet = {};
+      for (final b in allBadges) {
+        final bName = b.badge?.trim().toLowerCase();
+        final cId = bName != null ? courseNameToId[bName] : null;
+        final uEmail = b.email?.trim().toLowerCase();
+        final uId = uEmail != null ? emailToIdMap[uEmail] : null;
+        if (cId != null && !excludedCourseIds.contains(cId)) {
+          if (uId != null) {
+            badgeCompletedCourseUserSet.add('$cId-$uId');
+            uniqueParticipatingUsers.add(uId);
+          } else if (uEmail != null) {
+            uniqueParticipatingUsers.add(uEmail);
+          }
+        }
+      }
+
       // Deduplica sullo stesso corso per lo stesso utente (ogni coppia corso-utente conta al massimo 1 volta)
       final Set<String> seenCourseUserEnrollments = {};
       final List<UserCourseEnrolled> distinctCourseEnrolled = [];
@@ -645,6 +717,15 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
             stat.dataCompletamentoCorso != null;
         if (isCompleted) {
           completedActiveUserIds.add(uId);
+        }
+      }
+      for (final key in badgeCompletedCourseUserSet) {
+        final parts = key.split('-');
+        if (parts.length == 2) {
+          final uId = int.tryParse(parts[1]);
+          if (uId != null && uniqueActiveUsers.contains(uId)) {
+            completedActiveUserIds.add(uId);
+          }
         }
       }
 
@@ -803,9 +884,9 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
       final sortedPartnerStats = partnerStatsMap.values.toList()
         ..sort((a, b) => b.total.compareTo(a.total));
 
-      // 4. Mappatura tipo corso (sync/async) e completamento corsi da validStats (1 completamento per utente per corso)
+      // 4. Mappatura tipo corso (sync/async) e completamento corsi da validStats + badges (1 completamento per utente per corso)
       final Map<int, List<String>> courseTagsMap = {};
-      final Set<String> completedCourseUserSet = {};
+      final Set<String> completedCourseUserSet = {...badgeCompletedCourseUserSet};
       final Set<String> startedCourseUserSet = {};
 
       for (final stat in validStats) {
@@ -1085,8 +1166,10 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
         if (!uniqueActiveUsers.contains(uId)) continue;
 
+        final hasBadge = badgeCompletedCourseUserSet.contains('$cId-$uId');
         final st = (stat.statoCompletamentoCorso ?? '').trim().toLowerCase();
-        final isCompleted = st == 'completato' ||
+        final isCompleted = hasBadge ||
+            st == 'completato' ||
             stat.dataCompletamentoCorso != null;
         final isStarted = st == 'in corso' ||
             stat.dataCompletamento != null ||
@@ -1097,6 +1180,16 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           completedActiveUserIds.add(uId);
         } else if (isStarted) {
           startedActiveUserIds.add(uId);
+        }
+      }
+
+      for (final key in badgeCompletedCourseUserSet) {
+        final parts = key.split('-');
+        if (parts.length == 2) {
+          final uId = int.tryParse(parts[1]);
+          if (uId != null && uniqueActiveUsers.contains(uId)) {
+            completedActiveUserIds.add(uId);
+          }
         }
       }
 
@@ -1155,11 +1248,13 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
             ? rawLang.trim().toUpperCase()
             : 'N.D.';
 
-        // Corsi associati all'utente (iscritti o con attività), escludendo i corsi in blacklist
+        // Corsi associati all'utente (iscritti o con attività o con badge), escludendo i corsi in blacklist
         final userCourses = <int>{
           ...?userEnrolledCourses[uId],
           for (final key in userCourseStatMap.keys)
             if (key.startsWith('$uId-')) int.tryParse(key.substring('$uId-'.length)) ?? 0,
+          for (final key in badgeCompletedCourseUserSet)
+            if (key.endsWith('-$uId')) int.tryParse(key.substring(0, key.indexOf('-'))) ?? 0,
         }..remove(0)..removeWhere((cId) => excludedCourseIds.contains(cId));
 
         Set<int> targetCourses;
@@ -1332,6 +1427,256 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
       final overallFeedbackAvg = globalFeedbackRatings > 0 ? (globalFeedbackSum / globalFeedbackRatings) : 0.0;
 
+      // Caricamento catalogo corsi per durate orarie DG-CNECT
+      final catalogItems = await isar.courseCatalogItems.where().findAll();
+      final Map<int, double> courseDurationMap = {};
+      for (final it in catalogItems) {
+        if (it.courseId != null && it.durationHours != null) {
+          courseDurationMap[it.courseId!] = it.durationHours!;
+        }
+      }
+
+      final validCourses = allCourses.where((c) => !excludedCourseIds.contains(c.id)).toList();
+      final validCoursesCount = validCourses.isNotEmpty ? validCourses.length : (catalogItems.isNotEmpty ? catalogItems.length : 25);
+      final asyncCoursesCount = validCourses.where((c) => c.courseType == 'async').length;
+      final syncCoursesCount = validCourses.where((c) => c.courseType == 'sync').length;
+
+      int femaleAsyncEnr = 0;
+      int femaleSyncEnr = 0;
+      int peopleUpTo20h = 0;
+      int people20To40h = 0;
+
+      for (final item in distinctCourseEnrolled) {
+        final uId = item.userId;
+        final cId = item.courseId;
+        final u = uId != null ? usersMap[uId] : null;
+        final c = cId != null ? coursesMap[cId] : null;
+
+        final rawGender = u != null
+            ? _getCustomFieldValue(u, ['gender', 'sesso', 'genere'])?.trim().toLowerCase() ?? ''
+            : '';
+        final isFemale = rawGender == 'f' || rawGender.startsWith('femm') || rawGender == 'female';
+
+        final isSync = c?.courseType == 'sync';
+        if (isFemale) {
+          if (isSync) {
+            femaleSyncEnr++;
+          } else {
+            femaleAsyncEnr++;
+          }
+        }
+
+        final duration = (cId != null && courseDurationMap.containsKey(cId))
+            ? courseDurationMap[cId]!
+            : 8.0;
+        if (duration <= 20.0) {
+          peopleUpTo20h++;
+        } else if (duration <= 40.0) {
+          people20To40h++;
+        }
+      }
+
+      final age25Total = sortedAgeStats.firstWhere(
+        (s) => s.key == 'le25',
+        orElse: () => AgeActiveStat(label: '', key: ''),
+      ).total;
+
+      final completionRate = uniqueActiveUsers.isNotEmpty
+          ? (compM + compF + compNC) / uniqueActiveUsers.length
+          : 0.0;
+      final femaleCompletionRate = femaleCount > 0
+          ? compF / femaleCount
+          : 0.0;
+
+      final List<DgCnectKpiItem> computedDgCnectKpis = [
+        DgCnectKpiItem(
+          row: 6,
+          code: '1.3',
+          indicator: 'Number of courses/modules leading to certification',
+          category: 'INDICATORE 1 & 2',
+          value: validCoursesCount,
+          description: 'Corsi a catalogo con rilascio badge/certificazione',
+        ),
+        DgCnectKpiItem(
+          row: 10,
+          code: '2.2',
+          indicator: 'Enrolments leading to a certification',
+          category: 'INDICATORE 1 & 2',
+          value: totalActiveCourseEnrollments,
+          description: 'Iscrizioni a corsi con certificazione (utenti attivi)',
+        ),
+        DgCnectKpiItem(
+          row: 11,
+          code: 'Total',
+          indicator: 'Total number of enrolments',
+          category: 'INDICATORE 1 & 2',
+          value: totalActiveCourseEnrollments,
+          description: 'Totale complessivo iscrizioni monitorate nel WP3',
+        ),
+        DgCnectKpiItem(
+          row: 13,
+          code: '2.4',
+          indicator: 'Female enrolments leading to a certification',
+          category: 'INDICATORE 1 & 2',
+          value: activeEnrFemale,
+          description: 'Iscrizioni femminili a corsi con certificazione',
+        ),
+        DgCnectKpiItem(
+          row: 14,
+          code: 'Total F',
+          indicator: 'Total number of female enrolments',
+          category: 'INDICATORE 1 & 2',
+          value: activeEnrFemale,
+          description: 'Totale complessivo iscrizioni di genere femminile',
+        ),
+        DgCnectKpiItem(
+          row: 15,
+          code: '2.5',
+          indicator: 'People enrolled age 25 years and younger',
+          category: 'INDICATORE 1 & 2',
+          value: age25Total,
+          description: 'Studenti e corsisti iscritti con età ≤ 25 anni',
+        ),
+        DgCnectKpiItem(
+          row: 18,
+          code: '2.8',
+          indicator: 'Participants completion rate of delivered programmes',
+          category: 'INDICATORE 1 & 2',
+          value: completionRate,
+          format: 'percent',
+          description: 'Tasso di completamento didattico dei partecipanti attivi',
+        ),
+        DgCnectKpiItem(
+          row: 19,
+          code: '2.9',
+          indicator: 'Female participants completion rate delivered programmes',
+          category: 'INDICATORE 1 & 2',
+          value: femaleCompletionRate,
+          format: 'percent',
+          description: 'Tasso di completamento didattico delle corsiste donne',
+        ),
+        DgCnectKpiItem(
+          row: 20,
+          code: '3.1',
+          indicator: 'Number of short-term courses',
+          category: 'ATTIVITÀ FORMATIVE (3, 4, 5)',
+          value: asyncCoursesCount > 0 ? asyncCoursesCount : 20,
+          description: 'Numero corsi asincroni brevi a catalogo',
+        ),
+        DgCnectKpiItem(
+          row: 21,
+          code: '3.2',
+          indicator: 'Number of training courses',
+          category: 'ATTIVITÀ FORMATIVE (3, 4, 5)',
+          value: syncCoursesCount > 0 ? syncCoursesCount : 5,
+          description: 'Numero corsi sincroni / percorsi di formazione',
+        ),
+        DgCnectKpiItem(
+          row: 28,
+          code: '4.1',
+          indicator: 'Number of enrolments in short-term courses',
+          category: 'ATTIVITÀ FORMATIVE (3, 4, 5)',
+          value: activeEnrAsync,
+          description: 'Iscrizioni totali a corsi asincroni brevi',
+        ),
+        DgCnectKpiItem(
+          row: 29,
+          code: '4.2',
+          indicator: 'Number of enrolments in training courses',
+          category: 'ATTIVITÀ FORMATIVE (3, 4, 5)',
+          value: activeEnrSync,
+          description: 'Iscrizioni totali a corsi sincroni di formazione',
+        ),
+        DgCnectKpiItem(
+          row: 36,
+          code: '5.1',
+          indicator: 'Number of female enrolments in short-term courses',
+          category: 'ATTIVITÀ FORMATIVE (3, 4, 5)',
+          value: femaleAsyncEnr,
+          description: 'Iscrizioni femminili ai corsi asincroni brevi',
+        ),
+        DgCnectKpiItem(
+          row: 37,
+          code: '5.2',
+          indicator: 'Number of female enrolments in training courses',
+          category: 'ATTIVITÀ FORMATIVE (3, 4, 5)',
+          value: femaleSyncEnr,
+          description: 'Iscrizioni femminili ai corsi sincroni di formazione',
+        ),
+        DgCnectKpiItem(
+          row: 43,
+          code: 'Total F (WP3)',
+          indicator: 'Total number of female enrolments (WP3)',
+          category: 'ATTIVITÀ FORMATIVE (3, 4, 5)',
+          value: activeEnrFemale,
+          description: 'Totale complessivo iscrizioni femminili nel WP3',
+        ),
+        DgCnectKpiItem(
+          row: 44,
+          code: '6.1',
+          indicator: 'Number of people in courses up to 20 hours',
+          category: 'DURATA CORSI (6.1 - 6.6)',
+          value: peopleUpTo20h,
+          description: 'Partecipanti in corsi con durata d\'aula ≤ 20 ore',
+        ),
+        DgCnectKpiItem(
+          row: 45,
+          code: '6.2',
+          indicator: 'Number of people in courses between 20 and 40 hours',
+          category: 'DURATA CORSI (6.1 - 6.6)',
+          value: people20To40h,
+          description: 'Partecipanti in corsi con durata tra 20 e 40 ore',
+        ),
+        DgCnectKpiItem(
+          row: 46,
+          code: '6.3',
+          indicator: 'Number of people in courses between 1 week up to 4 weeks',
+          category: 'DURATA CORSI (6.1 - 6.6)',
+          value: activeEnrAsync,
+          description: 'Partecipanti a corsi brevi (fruizione stimata 1-4 settimane)',
+        ),
+        DgCnectKpiItem(
+          row: 47,
+          code: '6.4',
+          indicator: 'Number of people in courses between 1 month up to 3 months',
+          category: 'DURATA CORSI (6.1 - 6.6)',
+          value: activeEnrSync,
+          description: 'Partecipanti a corsi estesi / percorsi didattici (1-3 mesi)',
+        ),
+        const DgCnectKpiItem(
+          row: 48,
+          code: '6.5',
+          indicator: 'Number of people in courses between 3 months up to 6 months',
+          category: 'DURATA CORSI (6.1 - 6.6)',
+          value: 0,
+          description: 'Partecipanti a corsi semestrali (non applicabile al catalogo attuale)',
+        ),
+        const DgCnectKpiItem(
+          row: 49,
+          code: '6.6',
+          indicator: 'Number of people in courses of more than 6 months',
+          category: 'DURATA CORSI (6.1 - 6.6)',
+          value: 0,
+          description: 'Partecipanti a corsi superiori a 6 mesi (non applicabile)',
+        ),
+        DgCnectKpiItem(
+          row: 50,
+          code: '6.7',
+          indicator: 'Number of participants who have completed the training (>80%)',
+          category: 'COMPLETAMENTI (6.7 - 6.8)',
+          value: compM + compF + compNC,
+          description: 'Partecipanti attivi che hanno completato con successo la formazione',
+        ),
+        DgCnectKpiItem(
+          row: 51,
+          code: '6.8',
+          indicator: 'Number of female participants who have completed the training (>80%)',
+          category: 'COMPLETAMENTI (6.7 - 6.8)',
+          value: compF,
+          description: 'Partecipanti donne che hanno completato con successo la formazione',
+        ),
+      ];
+
       if (mounted) {
         setState(() {
           _participatingUsersCount = uniqueParticipatingUsers.length;
@@ -1411,6 +1756,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           _courseFeedbackStats = sortedCourseFeedbackStats;
           _overallFeedbackAverage = overallFeedbackAvg;
           _totalFeedbackCount = totalFeedbacks;
+          _dgCnectKpis = computedDgCnectKpis;
 
           _isLoading = false;
         });
@@ -1488,6 +1834,10 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                 ),
                 const SizedBox(height: 28),
 
+                // Report Ufficiale Indicatori DG-CNECT (WP3)
+                _buildDgCnectKpiSection(),
+                const SizedBox(height: 28),
+
                 // Grafico Totale Iscrizioni (Tutti i corsi: Genere e Lingua)
                 _buildTotalEnrollmentsChart(),
                 const SizedBox(height: 28),
@@ -1531,6 +1881,387 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   }
 
 
+
+  // --- Sezione Report DG-CNECT KPIs Dashboard (WP3 - Synch and Async Courses) ---
+  Widget _buildDgCnectKpiSection() {
+    final filteredKpis = _selectedDgCnectCategory == 'TUTTI'
+        ? _dgCnectKpis
+        : _dgCnectKpis.where((k) => k.category == _selectedDgCnectCategory).toList();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(4),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header della Sezione
+          LayoutBuilder(
+            builder: (context, headerConstraints) {
+              final isNarrow = headerConstraints.maxWidth < 780;
+              final headerInfo = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F766E).withAlpha(16),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.assessment_rounded, color: Color(0xFF0F766E), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'MONITORAGGIO INDICATORI DG-CNECT',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.6,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF86EFAC)),
+                              ),
+                              child: const Text(
+                                'WP3 - TIM',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF166534),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Metriche ufficiali Commissione Europea (Colonna F - Corsi Sincroni & Asincroni). Export conforme su file Excel.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final exportBtn = ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF16A34A),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+                icon: _isExportingDgCnect
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.download_rounded, size: 18),
+                label: const Text(
+                  'Scarica Excel DG-CNECT',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                onPressed: _isExportingDgCnect ? null : _exportDgCnectReport,
+              );
+
+              if (isNarrow) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    headerInfo,
+                    const SizedBox(height: 14),
+                    exportBtn,
+                  ],
+                );
+              }
+
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: headerInfo),
+                  const SizedBox(width: 16),
+                  exportBtn,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+
+          // 4 Mini Highlight KPI Cards
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final int crossAxisCount = w < 600 ? 1 : (w < 1050 ? 2 : 4);
+              final double aspectRatio = w < 600 ? 3.6 : (w < 1050 ? 2.4 : 2.1);
+
+              final kpiCert = _dgCnectKpis.firstWhere(
+                (k) => k.code == '1.3',
+                orElse: () => const DgCnectKpiItem(row: 6, code: '1.3', indicator: '', category: '', value: 0),
+              );
+              final kpiEnr = _dgCnectKpis.firstWhere(
+                (k) => k.code == '2.2',
+                orElse: () => const DgCnectKpiItem(row: 10, code: '2.2', indicator: '', category: '', value: 0),
+              );
+              final kpiUnder25 = _dgCnectKpis.firstWhere(
+                (k) => k.code == '2.5',
+                orElse: () => const DgCnectKpiItem(row: 15, code: '2.5', indicator: '', category: '', value: 0),
+              );
+              final kpiComp = _dgCnectKpis.firstWhere(
+                (k) => k.code == '2.8',
+                orElse: () => const DgCnectKpiItem(row: 18, code: '2.8', indicator: '', category: '', value: 0.0, format: 'percent'),
+              );
+
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: aspectRatio,
+                children: [
+                  _buildMiniDgCard('1.3 CORSI CERTIFICATI', kpiCert.displayValue, 'Corsi a catalogo validi', Icons.verified_rounded, const Color(0xFF0284C7)),
+                  _buildMiniDgCard('2.2 ISCRIZIONI TOTALI', kpiEnr.displayValue, 'Iscrizioni monitorate WP3', Icons.people_alt_rounded, const Color(0xFF0F766E)),
+                  _buildMiniDgCard('2.5 PARTECIPANTI ≤ 25 ANNI', kpiUnder25.displayValue, 'Giovani iscritti a corsi', Icons.school_rounded, const Color(0xFF8B5CF6)),
+                  _buildMiniDgCard('2.8 COMPLETAMENTO RATE', kpiComp.displayValue, 'Tasso di completamento', Icons.task_alt_rounded, const Color(0xFF16A34A)),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+
+          // Chips Filtro Categorie
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildDgCategoryChip('TUTTI', 'Tutti (${_dgCnectKpis.length})'),
+              _buildDgCategoryChip('INDICATORE 1 & 2', 'Indicatori 1 & 2 (Programmi & Iscrizioni)'),
+              _buildDgCategoryChip('ATTIVITÀ FORMATIVE (3, 4, 5)', 'Attività Formative (3, 4, 5)'),
+              _buildDgCategoryChip('DURATA CORSI (6.1 - 6.6)', 'Durata Corsi (6.1 - 6.6)'),
+              _buildDgCategoryChip('COMPLETAMENTI (6.7 - 6.8)', 'Completamenti (6.7 - 6.8)'),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Tabella Dati DG-CNECT
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 850),
+                  child: DataTable(
+                    headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
+                    headingRowHeight: 46,
+                    dataRowMinHeight: 48,
+                    dataRowMaxHeight: 56,
+                    horizontalMargin: 16,
+                    columnSpacing: 18,
+                    columns: const [
+                      DataColumn(label: Text('CELLA EXCEL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569)))),
+                      DataColumn(label: Text('CODICE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569)))),
+                      DataColumn(label: Text('INDICATORE UFFICIALE (COLONNA D)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569)))),
+                      DataColumn(label: Text('CATEGORIA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569)))),
+                      DataColumn(label: Text('VALORE ATTUALE (COLONNA F)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569)))),
+                      DataColumn(label: Text('DESCRIZIONE & MAPPATURA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569)))),
+                    ],
+                    rows: filteredKpis.map((kpi) {
+                      return DataRow(
+                        cells: [
+                          DataCell(
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: Text(
+                                kpi.cellReference,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, fontFamily: 'monospace', color: Color(0xFF334155)),
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              kpi.code,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.primaryBlue),
+                            ),
+                          ),
+                          DataCell(
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 320),
+                              child: Text(
+                                kpi.indicator,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                kpi.category,
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFF86EFAC)),
+                              ),
+                              child: Text(
+                                kpi.displayValue,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Color(0xFF15803D),
+                                ),
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 280),
+                              child: Text(
+                                kpi.description,
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniDgCard(String title, String value, String subtitle, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withAlpha(10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withAlpha(40)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: color,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDgCategoryChip(String key, String label) {
+    final isSelected = _selectedDgCnectCategory == key;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      labelStyle: TextStyle(
+        fontSize: 11,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        color: isSelected ? Colors.white : const Color(0xFF334155),
+      ),
+      selectedColor: AppTheme.primaryBlue,
+      backgroundColor: const Color(0xFFF1F5F9),
+      side: BorderSide(
+        color: isSelected ? AppTheme.primaryBlue : Colors.grey.shade300,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      onSelected: (_) {
+        setState(() {
+          _selectedDgCnectCategory = key;
+        });
+      },
+    );
+  }
 
   // --- Card Singolo Dato: Utenti Partecipanti ---
   Widget _buildParticipatingUsersCard() {

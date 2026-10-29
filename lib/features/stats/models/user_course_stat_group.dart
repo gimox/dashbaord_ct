@@ -22,6 +22,8 @@ class UserCourseStatGroup {
   final String? membershipOrg;
   final String? userCourseLang;
 
+  final bool hasBadge;
+  final bool isForcedCompletedByBadge;
   final List<StatMdl> activities;
 
   UserCourseStatGroup({
@@ -41,6 +43,8 @@ class UserCourseStatGroup {
     required this.qualification,
     required this.membershipOrg,
     required this.userCourseLang,
+    this.hasBadge = false,
+    this.isForcedCompletedByBadge = false,
     required this.activities,
   });
 
@@ -53,6 +57,7 @@ class UserCourseStatGroup {
       totalActivities > 0 ? (completedActivities / totalActivities) : 0.0;
 
   bool get isCourseCompleted =>
+      hasBadge ||
       (statoCompletamentoCorso ?? '').toLowerCase() == 'completato' ||
       dataCompletamentoCorso != null;
 

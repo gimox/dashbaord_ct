@@ -62,78 +62,83 @@ const AppSettingsSchema = CollectionSchema(
       name: r'lastCategoriesSyncDate',
       type: IsarType.dateTime,
     ),
-    r'lastCourseInfoSyncDate': PropertySchema(
+    r'lastCourseCatalogSyncDate': PropertySchema(
       id: 9,
+      name: r'lastCourseCatalogSyncDate',
+      type: IsarType.dateTime,
+    ),
+    r'lastCourseInfoSyncDate': PropertySchema(
+      id: 10,
       name: r'lastCourseInfoSyncDate',
       type: IsarType.dateTime,
     ),
     r'lastCoursesSyncDate': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'lastCoursesSyncDate',
       type: IsarType.dateTime,
     ),
     r'lastFeedbackForBiSyncDate': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'lastFeedbackForBiSyncDate',
       type: IsarType.dateTime,
     ),
     r'lastMergeWebexUsersSyncDate': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'lastMergeWebexUsersSyncDate',
       type: IsarType.dateTime,
     ),
     r'lastStatMdlSyncDate': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'lastStatMdlSyncDate',
       type: IsarType.dateTime,
     ),
     r'lastSyncTime': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'lastSyncTime',
       type: IsarType.dateTime,
     ),
     r'lastUserCourseEnrolledSyncDate': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'lastUserCourseEnrolledSyncDate',
       type: IsarType.dateTime,
     ),
     r'lastUsersSyncDate': PropertySchema(
-      id: 16,
+      id: 17,
       name: r'lastUsersSyncDate',
       type: IsarType.dateTime,
     ),
     r'proxyAutoConfig': PropertySchema(
-      id: 17,
+      id: 18,
       name: r'proxyAutoConfig',
       type: IsarType.bool,
     ),
     r'proxyEnabled': PropertySchema(
-      id: 18,
+      id: 19,
       name: r'proxyEnabled',
       type: IsarType.bool,
     ),
     r'proxyPassword': PropertySchema(
-      id: 19,
+      id: 20,
       name: r'proxyPassword',
       type: IsarType.string,
     ),
     r'proxyUsername': PropertySchema(
-      id: 20,
+      id: 21,
       name: r'proxyUsername',
       type: IsarType.string,
     ),
     r'sharepointDocumentLibrary': PropertySchema(
-      id: 21,
+      id: 22,
       name: r'sharepointDocumentLibrary',
       type: IsarType.string,
     ),
     r'sharepointSiteName': PropertySchema(
-      id: 22,
+      id: 23,
       name: r'sharepointSiteName',
       type: IsarType.string,
     ),
     r'syncOnStartup': PropertySchema(
-      id: 23,
+      id: 24,
       name: r'syncOnStartup',
       type: IsarType.bool,
     )
@@ -186,21 +191,22 @@ void _appSettingsSerialize(
   writer.writeString(offsets[6], object.customProxyUrl);
   writer.writeDateTime(offsets[7], object.lastBadgesUsersSyncDate);
   writer.writeDateTime(offsets[8], object.lastCategoriesSyncDate);
-  writer.writeDateTime(offsets[9], object.lastCourseInfoSyncDate);
-  writer.writeDateTime(offsets[10], object.lastCoursesSyncDate);
-  writer.writeDateTime(offsets[11], object.lastFeedbackForBiSyncDate);
-  writer.writeDateTime(offsets[12], object.lastMergeWebexUsersSyncDate);
-  writer.writeDateTime(offsets[13], object.lastStatMdlSyncDate);
-  writer.writeDateTime(offsets[14], object.lastSyncTime);
-  writer.writeDateTime(offsets[15], object.lastUserCourseEnrolledSyncDate);
-  writer.writeDateTime(offsets[16], object.lastUsersSyncDate);
-  writer.writeBool(offsets[17], object.proxyAutoConfig);
-  writer.writeBool(offsets[18], object.proxyEnabled);
-  writer.writeString(offsets[19], object.proxyPassword);
-  writer.writeString(offsets[20], object.proxyUsername);
-  writer.writeString(offsets[21], object.sharepointDocumentLibrary);
-  writer.writeString(offsets[22], object.sharepointSiteName);
-  writer.writeBool(offsets[23], object.syncOnStartup);
+  writer.writeDateTime(offsets[9], object.lastCourseCatalogSyncDate);
+  writer.writeDateTime(offsets[10], object.lastCourseInfoSyncDate);
+  writer.writeDateTime(offsets[11], object.lastCoursesSyncDate);
+  writer.writeDateTime(offsets[12], object.lastFeedbackForBiSyncDate);
+  writer.writeDateTime(offsets[13], object.lastMergeWebexUsersSyncDate);
+  writer.writeDateTime(offsets[14], object.lastStatMdlSyncDate);
+  writer.writeDateTime(offsets[15], object.lastSyncTime);
+  writer.writeDateTime(offsets[16], object.lastUserCourseEnrolledSyncDate);
+  writer.writeDateTime(offsets[17], object.lastUsersSyncDate);
+  writer.writeBool(offsets[18], object.proxyAutoConfig);
+  writer.writeBool(offsets[19], object.proxyEnabled);
+  writer.writeString(offsets[20], object.proxyPassword);
+  writer.writeString(offsets[21], object.proxyUsername);
+  writer.writeString(offsets[22], object.sharepointDocumentLibrary);
+  writer.writeString(offsets[23], object.sharepointSiteName);
+  writer.writeBool(offsets[24], object.syncOnStartup);
 }
 
 AppSettings _appSettingsDeserialize(
@@ -220,22 +226,23 @@ AppSettings _appSettingsDeserialize(
   object.id = id;
   object.lastBadgesUsersSyncDate = reader.readDateTimeOrNull(offsets[7]);
   object.lastCategoriesSyncDate = reader.readDateTimeOrNull(offsets[8]);
-  object.lastCourseInfoSyncDate = reader.readDateTimeOrNull(offsets[9]);
-  object.lastCoursesSyncDate = reader.readDateTimeOrNull(offsets[10]);
-  object.lastFeedbackForBiSyncDate = reader.readDateTimeOrNull(offsets[11]);
-  object.lastMergeWebexUsersSyncDate = reader.readDateTimeOrNull(offsets[12]);
-  object.lastStatMdlSyncDate = reader.readDateTimeOrNull(offsets[13]);
-  object.lastSyncTime = reader.readDateTimeOrNull(offsets[14]);
+  object.lastCourseCatalogSyncDate = reader.readDateTimeOrNull(offsets[9]);
+  object.lastCourseInfoSyncDate = reader.readDateTimeOrNull(offsets[10]);
+  object.lastCoursesSyncDate = reader.readDateTimeOrNull(offsets[11]);
+  object.lastFeedbackForBiSyncDate = reader.readDateTimeOrNull(offsets[12]);
+  object.lastMergeWebexUsersSyncDate = reader.readDateTimeOrNull(offsets[13]);
+  object.lastStatMdlSyncDate = reader.readDateTimeOrNull(offsets[14]);
+  object.lastSyncTime = reader.readDateTimeOrNull(offsets[15]);
   object.lastUserCourseEnrolledSyncDate =
-      reader.readDateTimeOrNull(offsets[15]);
-  object.lastUsersSyncDate = reader.readDateTimeOrNull(offsets[16]);
-  object.proxyAutoConfig = reader.readBool(offsets[17]);
-  object.proxyEnabled = reader.readBool(offsets[18]);
-  object.proxyPassword = reader.readString(offsets[19]);
-  object.proxyUsername = reader.readString(offsets[20]);
-  object.sharepointDocumentLibrary = reader.readString(offsets[21]);
-  object.sharepointSiteName = reader.readString(offsets[22]);
-  object.syncOnStartup = reader.readBool(offsets[23]);
+      reader.readDateTimeOrNull(offsets[16]);
+  object.lastUsersSyncDate = reader.readDateTimeOrNull(offsets[17]);
+  object.proxyAutoConfig = reader.readBool(offsets[18]);
+  object.proxyEnabled = reader.readBool(offsets[19]);
+  object.proxyPassword = reader.readString(offsets[20]);
+  object.proxyUsername = reader.readString(offsets[21]);
+  object.sharepointDocumentLibrary = reader.readString(offsets[22]);
+  object.sharepointSiteName = reader.readString(offsets[23]);
+  object.syncOnStartup = reader.readBool(offsets[24]);
   return object;
 }
 
@@ -281,11 +288,11 @@ P _appSettingsDeserializeProp<P>(
     case 16:
       return (reader.readDateTimeOrNull(offset)) as P;
     case 17:
-      return (reader.readBool(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 18:
       return (reader.readBool(offset)) as P;
     case 19:
-      return (reader.readString(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 20:
       return (reader.readString(offset)) as P;
     case 21:
@@ -293,6 +300,8 @@ P _appSettingsDeserializeProp<P>(
     case 22:
       return (reader.readString(offset)) as P;
     case 23:
+      return (reader.readString(offset)) as P;
+    case 24:
       return (reader.readBool(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1409,6 +1418,80 @@ extension AppSettingsQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
         property: r'lastCategoriesSyncDate',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCourseCatalogSyncDateIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'lastCourseCatalogSyncDate',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCourseCatalogSyncDateIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'lastCourseCatalogSyncDate',
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCourseCatalogSyncDateEqualTo(DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastCourseCatalogSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCourseCatalogSyncDateGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastCourseCatalogSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCourseCatalogSyncDateLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastCourseCatalogSyncDate',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterFilterCondition>
+      lastCourseCatalogSyncDateBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastCourseCatalogSyncDate',
         lower: lower,
         includeLower: includeLower,
         upper: upper,
@@ -2711,6 +2794,20 @@ extension AppSettingsQuerySortBy
   }
 
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByLastCourseCatalogSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastCourseCatalogSyncDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      sortByLastCourseCatalogSyncDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastCourseCatalogSyncDate', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
       sortByLastCourseInfoSyncDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastCourseInfoSyncDate', Sort.asc);
@@ -3046,6 +3143,20 @@ extension AppSettingsQuerySortThenBy
   }
 
   QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByLastCourseCatalogSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastCourseCatalogSyncDate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
+      thenByLastCourseCatalogSyncDateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastCourseCatalogSyncDate', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QAfterSortBy>
       thenByLastCourseInfoSyncDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastCourseInfoSyncDate', Sort.asc);
@@ -3318,6 +3429,13 @@ extension AppSettingsQueryWhereDistinct
   }
 
   QueryBuilder<AppSettings, AppSettings, QDistinct>
+      distinctByLastCourseCatalogSyncDate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'lastCourseCatalogSyncDate');
+    });
+  }
+
+  QueryBuilder<AppSettings, AppSettings, QDistinct>
       distinctByLastCourseInfoSyncDate() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'lastCourseInfoSyncDate');
@@ -3487,6 +3605,13 @@ extension AppSettingsQueryProperty
       lastCategoriesSyncDateProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'lastCategoriesSyncDate');
+    });
+  }
+
+  QueryBuilder<AppSettings, DateTime?, QQueryOperations>
+      lastCourseCatalogSyncDateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'lastCourseCatalogSyncDate');
     });
   }
 

@@ -15,6 +15,7 @@ import '../sync/models/stat_mdl.dart';
 import '../sync/models/user.dart';
 import '../sync/models/user_course_enrolled.dart';
 import '../sync/models/feedback_for_bi.dart';
+import '../catalog/models/course_catalog_item.dart';
 
 class DbSettingsView extends ConsumerStatefulWidget {
   const DbSettingsView({super.key});
@@ -34,6 +35,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   int _userCourseEnrolledCount = 0;
   int _courseExclusionsCount = 0;
   int _feedbackForBiCount = 0;
+  int _courseCatalogCount = 0;
   int _settingsCount = 0;
   bool _isLoading = false;
   StreamSubscription<void>? _usersSub;
@@ -46,6 +48,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
   StreamSubscription<void>? _userCourseEnrolledSub;
   StreamSubscription<void>? _courseExclusionsSub;
   StreamSubscription<void>? _feedbackForBiSub;
+  StreamSubscription<void>? _courseCatalogSub;
   StreamSubscription<void>? _settingsSub;
 
   @override
@@ -83,6 +86,9 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _feedbackForBiSub = isar.feedbackForBis.watchLazy().listen((_) {
       _refreshCounts();
     });
+    _courseCatalogSub = isar.courseCatalogItems.watchLazy().listen((_) {
+      _refreshCounts();
+    });
     _settingsSub = isar.appSettings.watchLazy().listen((_) {
       _refreshCounts();
     });
@@ -100,6 +106,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     _userCourseEnrolledSub?.cancel();
     _courseExclusionsSub?.cancel();
     _feedbackForBiSub?.cancel();
+    _courseCatalogSub?.cancel();
     _settingsSub?.cancel();
     super.dispose();
   }
@@ -116,6 +123,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     final userCourseEnrolled = await isar.userCourseEnrolleds.count();
     final courseExclusions = await isar.courseExclusions.count();
     final feedbackForBi = await isar.feedbackForBis.count();
+    final courseCatalog = await isar.courseCatalogItems.count();
     final settings = await isar.appSettings.count();
     if (mounted) {
       setState(() {
@@ -129,6 +137,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         _userCourseEnrolledCount = userCourseEnrolled;
         _courseExclusionsCount = courseExclusions;
         _feedbackForBiCount = feedbackForBi;
+        _courseCatalogCount = courseCatalog;
         _settingsCount = settings;
       });
     }
@@ -388,10 +397,33 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
     }
   }
 
+  Future<void> _clearCourseCatalogTable() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Resettare tabella Catalogo Corsi?',
+      content: 'Tutte le voci del catalogo con relative durate e mappature memorizzate nel database locale verranno eliminate permanentemente.',
+    );
+    if (!confirmed) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final isar = ref.read(isarProvider);
+      await isar.writeTxn(() async {
+        await isar.courseCatalogItems.clear();
+      });
+      await ref.read(appSettingsProvider.notifier).updateCourseCatalogSyncDate(DateTime.fromMillisecondsSinceEpoch(0));
+      await _refreshCounts();
+      _showSuccessSnack('Tabella Catalogo Corsi svuotata con successo.');
+    } catch (e) {
+      _showErrorSnack('Errore durante lo svuotamento: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _clearAllTables() async {
     final confirmed = await _showConfirmDialog(
       title: 'Eseguire Reset Completo del Database?',
-      content: 'Questa operazione svuoterà TUTTE le tabelle (Users, Categories, Courses, Badges Users, Course Info, Merge Webex Users, Stat Moduli, Iscrizioni, Esclusioni, Feedback for BI e AppSettings). Tutti i dati locali andranno persi.',
+      content: 'Questa operazione svuoterà TUTTE le tabelle (Users, Categories, Courses, Badges Users, Course Info, Merge Webex Users, Stat Moduli, Iscrizioni, Esclusioni, Feedback for BI, Catalogo Corsi e AppSettings). Tutti i dati locali andranno persi.',
       isDestructive: true,
     );
     if (!confirmed) return;
@@ -410,6 +442,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         await isar.userCourseEnrolleds.clear();
         await isar.courseExclusions.clear();
         await isar.feedbackForBis.clear();
+        await isar.courseCatalogItems.clear();
         await isar.appSettings.clear();
         await isar.appSettings.put(AppSettings());
       });
@@ -500,6 +533,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
         _userCourseEnrolledCount +
         _courseExclusionsCount +
         _feedbackForBiCount +
+        _courseCatalogCount +
         _settingsCount;
 
     return Scaffold(
@@ -547,7 +581,7 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '11 tabelle gestite • $totalRecords record totali memorizzati',
+                                '12 tabelle gestite • $totalRecords record totali memorizzati',
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                               ),
                             ],
@@ -726,6 +760,20 @@ class _DbSettingsViewState extends ConsumerState<DbSettingsView> {
           actionColor: Colors.red.shade700,
           actionBorderColor: Colors.red.shade200,
           onAction: _clearCourseExclusionsTable,
+        ),
+        const SizedBox(height: 12),
+        _buildTableListItem(
+          icon: Icons.menu_book_outlined,
+          iconColor: const Color(0xFF0284C7),
+          name: 'Catalogo Corsi & Durate',
+          schema: 'CourseCatalogItemSchema',
+          count: _courseCatalogCount,
+          description: 'Catalogo percorsi formativi, codici corso, durata in ore didattiche, studio individuale e mappature Moodle',
+          actionLabel: 'Svuota Tabella',
+          actionIcon: Icons.cleaning_services_outlined,
+          actionColor: Colors.red.shade700,
+          actionBorderColor: Colors.red.shade200,
+          onAction: _clearCourseCatalogTable,
         ),
         const SizedBox(height: 12),
         _buildTableListItem(
