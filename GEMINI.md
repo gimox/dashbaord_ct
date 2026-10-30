@@ -199,3 +199,8 @@ Replicare fedelmente la struttura di `UsersListView`:
 
 - **4. Totale Iscrizioni a tutti i corsi (`totalEnrollments`):**
   - **Definizione:** Volume complessivo di tutte le iscrizioni a corsi non esclusi presenti in `user_course_enrolled`, conteggiando ciascun utente al massimo una sola volta per singolo corso (iscrizioni uniche corso-utente, con conteggio multi-corso su corsi distinti). Include ripartizione per Genere (Maschile, Femminile, Non Classificato) e per Lingua preferita.
+
+### Regola Distribuzione per Anno di Iscrizione (Data Primo Accesso)
+- **Calcolo Anno di Riferimento:** Nei grafici e nelle aggregazioni della Dashboard che ripartiscono gli utenti per anno di iscrizione (`DISTRIBUZIONE PER ANNO DI ISCRIZIONE (DATA PRIMO ACCESSO)` e filtri correlati):
+  - Viene estratto l'anno dalla data di primo accesso (`u.firstaccess`).
+  - **Regola N.D. ➔ 2025:** Nei casi in cui la data di primo accesso non sia presente, sia nulla o non valorizzata (record che risulterebbero altrimenti come `N.D.`), tali utenti vengono assimilati e considerati come iscritti nell'anno **`2025`**, sia per la visualizzazione del tab Attivi che del tab Iscritti.

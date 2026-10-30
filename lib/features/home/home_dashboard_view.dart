@@ -1089,7 +1089,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView>
               ? DateTime.fromMillisecondsSinceEpoch(val)
               : DateTime.fromMillisecondsSinceEpoch(val * 1000);
         }
-        final yearStr = firstAccessDate != null ? firstAccessDate.year.toString() : 'N.D.';
+        final yearStr = firstAccessDate != null ? firstAccessDate.year.toString() : '2025';
 
         activeYearMap[yearStr] = (activeYearMap[yearStr] ?? 0) + 1;
         activeGenderYearMap.putIfAbsent(yearStr, () => {})[genderKey] =
@@ -1755,7 +1755,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView>
               ? DateTime.fromMillisecondsSinceEpoch(val)
               : DateTime.fromMillisecondsSinceEpoch(val * 1000);
         }
-        final yearStr = firstAccessDate != null ? firstAccessDate.year.toString() : 'N.D.';
+        final yearStr = firstAccessDate != null ? firstAccessDate.year.toString() : '2025';
 
         enrolledYearMap[yearStr] = (enrolledYearMap[yearStr] ?? 0) + 1;
         enrolledGenderYearMap.putIfAbsent(yearStr, () => {})[genderKey] =
