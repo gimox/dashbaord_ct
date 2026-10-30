@@ -43,7 +43,9 @@ class HomeDashboardView extends ConsumerStatefulWidget {
   ConsumerState<HomeDashboardView> createState() => _HomeDashboardViewState();
 }
 
-class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
+class _HomeDashboardViewState extends ConsumerState<HomeDashboardView>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   bool _isLoading = true;
   int _participatingUsersCount = 0;
   int _activeUsersCount = 0;
@@ -58,6 +60,105 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   Map<String, Map<String, int>> _activeYearLangCounts = {};
   Map<String, Map<String, Map<String, int>>> _activeYearGenderLangCounts = {};
   String? _selectedGenderYear;
+  String? _selectedEnrolledGenderYear;
+
+  // Iscrizioni Corsi per Utenti Iscritti (Totale aggregato per tutti gli iscritti)
+  String _allCourseEnrollmentFilter = 'all'; // 'all' | 'completed' | 'other' | 'in_progress' | 'only_enrolled'
+  int _allCourseEnrollmentsTotal = 0;
+  int _allCourseEnrollmentsMale = 0;
+  int _allCourseEnrollmentsFemale = 0;
+  int _allCourseEnrollmentsUnclassified = 0;
+  int _allCourseEnrollmentsCompleted = 0;
+  int _allCourseEnrollmentsSync = 0;
+  int _allCourseEnrollmentsAsync = 0;
+  Map<String, int> _allCourseEnrollmentsLangCounts = {};
+  Map<String, Map<String, int>> _allCourseEnrollmentsGenderLangCounts = {};
+
+  // Dettagli Stato: Completati (Iscritti)
+  int _allCourseEnrCompMale = 0;
+  int _allCourseEnrCompFemale = 0;
+  int _allCourseEnrCompUnclass = 0;
+  Map<String, int> _allCourseEnrCompLangCounts = {};
+  Map<String, Map<String, int>> _allCourseEnrCompGenderLangCounts = {};
+
+  // Dettagli Stato: In Corso (Iscritti)
+  int _allCourseEnrollmentsInProgress = 0;
+  int _allCourseEnrInProgMale = 0;
+  int _allCourseEnrInProgFemale = 0;
+  int _allCourseEnrInProgUnclass = 0;
+  Map<String, int> _allCourseEnrInProgLangCounts = {};
+  Map<String, Map<String, int>> _allCourseEnrInProgGenderLangCounts = {};
+
+  // Dettagli Stato: Solo Iscritti (Iscritti)
+  int _allCourseEnrollmentsOnlyEnrolled = 0;
+  int _allCourseEnrOnlyEnrMale = 0;
+  int _allCourseEnrOnlyEnrFemale = 0;
+  int _allCourseEnrOnlyEnrUnclass = 0;
+  Map<String, int> _allCourseEnrOnlyEnrLangCounts = {};
+  Map<String, Map<String, int>> _allCourseEnrOnlyEnrGenderLangCounts = {};
+
+  // Dettagli Stato: Altri (In corso + Solo iscritti) (Iscritti)
+  int get _allCourseEnrollmentsOther =>
+      _allCourseEnrollmentsInProgress + _allCourseEnrollmentsOnlyEnrolled;
+  int get _allCourseEnrOtherMale =>
+      _allCourseEnrInProgMale + _allCourseEnrOnlyEnrMale;
+  int get _allCourseEnrOtherFemale =>
+      _allCourseEnrInProgFemale + _allCourseEnrOnlyEnrFemale;
+  int get _allCourseEnrOtherUnclass =>
+      _allCourseEnrInProgUnclass + _allCourseEnrOnlyEnrUnclass;
+  Map<String, int> _allCourseEnrOtherLangCounts = {};
+  Map<String, Map<String, int>> _allCourseEnrOtherGenderLangCounts = {};
+
+  // Utenti Iscritti: Metriche di Genere, Lingua, Anno
+  int _enrolledMaleCount = 0;
+  int _enrolledFemaleCount = 0;
+  int _enrolledUnclassifiedCount = 0;
+  Map<String, int> _enrolledUserLangCounts = {};
+  Map<String, Map<String, int>> _enrolledUserGenderLangCounts = {};
+  Map<String, int> _enrolledYearCounts = {};
+  Map<String, Map<String, int>> _enrolledGenderYearCounts = {};
+  Map<String, Map<String, int>> _enrolledYearLangCounts = {};
+  Map<String, Map<String, Map<String, int>>> _enrolledYearGenderLangCounts = {};
+
+  // Utenti Iscritti: Progresso Utente Singolo
+  int _enrolledCompMale = 0;
+  int _enrolledCompFemale = 0;
+  int _enrolledCompUnclass = 0;
+  int _enrolledCompSync = 0;
+  int _enrolledCompAsync = 0;
+  int _enrolledInProgMale = 0;
+  int _enrolledInProgFemale = 0;
+  int _enrolledInProgUnclass = 0;
+  int _enrolledInProgSync = 0;
+  int _enrolledInProgAsync = 0;
+  int _enrolledOnlyEnrMale = 0;
+  int _enrolledOnlyEnrFemale = 0;
+  int _enrolledOnlyEnrUnclass = 0;
+  int _enrolledOnlyEnrSync = 0;
+  int _enrolledOnlyEnrAsync = 0;
+  Map<String, int> _enrolledCompLangCounts = {};
+  Map<String, int> _enrolledInProgLangCounts = {};
+  Map<String, int> _enrolledOnlyEnrLangCounts = {};
+  bool _isExportingEnrolledProgress = false;
+  List<ActiveUserDetailExportItem> _enrolledUserDetails = [];
+
+  int get _totalEnrolledCompleted =>
+      _enrolledCompMale + _enrolledCompFemale + _enrolledCompUnclass;
+  int get _totalEnrolledInProgress =>
+      _enrolledInProgMale + _enrolledInProgFemale + _enrolledInProgUnclass;
+  int get _totalEnrolledOnlyEnrolled =>
+      _enrolledOnlyEnrMale + _enrolledOnlyEnrFemale + _enrolledOnlyEnrUnclass;
+
+  List<CourseActiveStat> _enrolledCourseStats = [];
+  bool _showAllEnrolledCourses = false;
+  bool _isExportingEnrolledCourses = false;
+
+  List<PartnerActiveStat> _enrolledPartnerStats = [];
+  bool _showAllEnrolledPartners = false;
+  bool _isExportingEnrolledPartners = false;
+
+  List<AgeActiveStat> _enrolledAgeStats = [];
+  bool _isExportingEnrolledAge = false;
 
   // Totale Iscrizioni Corsi per Utenti Attivi
   String _activeCourseEnrollmentFilter = 'all'; // 'all' | 'completed' | 'other' | 'in_progress' | 'only_enrolled'
@@ -170,6 +271,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadAllData();
     final isar = ref.read(isarProvider);
     _statMdlSub = isar.statMdls.watchLazy().listen((_) {
@@ -197,6 +299,7 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _statMdlSub?.cancel();
     _enrolledSub?.cancel();
     _usersSub?.cancel();
@@ -385,6 +488,193 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
       }
     } finally {
       if (mounted) setState(() => _isExportingFeedback = false);
+    }
+  }
+
+  Future<void> _exportEnrolledPartnersToExcel() async {
+    if (_enrolledPartnerStats.isEmpty || _isExportingEnrolledPartners) return;
+    setState(() => _isExportingEnrolledPartners = true);
+    try {
+      final path = await PartnerActiveStatsExcelExporter.exportStats(_enrolledPartnerStats);
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('File esportato con successo in: $path'),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'esportazione Excel Partner (Iscritti): $e'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingEnrolledPartners = false);
+      }
+    }
+  }
+
+  Future<void> _exportEnrolledAgeToExcel() async {
+    if (_enrolledAgeStats.isEmpty || _isExportingEnrolledAge) return;
+    setState(() => _isExportingEnrolledAge = true);
+    try {
+      final path = await AgeActiveStatsExcelExporter.exportStats(
+        _enrolledAgeStats,
+        totalActiveUsers: _enrolledUsersCount,
+      );
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('File esportato con successo in: $path'),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'esportazione Excel Età (Iscritti): $e'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingEnrolledAge = false);
+      }
+    }
+  }
+
+  Future<void> _exportEnrolledCoursesToExcel() async {
+    if (_enrolledCourseStats.isEmpty || _isExportingEnrolledCourses) return;
+    setState(() => _isExportingEnrolledCourses = true);
+    try {
+      final path = await CourseActiveStatsExcelExporter.exportStats(_enrolledCourseStats);
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    kIsWeb ? 'Esportazione Excel completata' : 'File salvato con successo: $path',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'esportazione Excel Corsi (Iscritti): $e'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExportingEnrolledCourses = false);
+    }
+  }
+
+  Future<void> _exportEnrolledProgressToExcel() async {
+    if (_enrolledUsersCount == 0 || _isExportingEnrolledProgress) return;
+    setState(() => _isExportingEnrolledProgress = true);
+    try {
+      final items = [
+        ProgressStatusExportItem(
+          statusName: 'Completati',
+          total: _totalEnrolledCompleted,
+          maleCount: _enrolledCompMale,
+          femaleCount: _enrolledCompFemale,
+          unclassifiedCount: _enrolledCompUnclass,
+          syncCount: _enrolledCompSync,
+          asyncCount: _enrolledCompAsync,
+          langCounts: _enrolledCompLangCounts,
+        ),
+        ProgressStatusExportItem(
+          statusName: 'In corso',
+          total: _totalEnrolledInProgress,
+          maleCount: _enrolledInProgMale,
+          femaleCount: _enrolledInProgFemale,
+          unclassifiedCount: _enrolledInProgUnclass,
+          syncCount: _enrolledInProgSync,
+          asyncCount: _enrolledInProgAsync,
+          langCounts: _enrolledInProgLangCounts,
+        ),
+        ProgressStatusExportItem(
+          statusName: 'Solo iscritti',
+          total: _totalEnrolledOnlyEnrolled,
+          maleCount: _enrolledOnlyEnrMale,
+          femaleCount: _enrolledOnlyEnrFemale,
+          unclassifiedCount: _enrolledOnlyEnrUnclass,
+          syncCount: _enrolledOnlyEnrSync,
+          asyncCount: _enrolledOnlyEnrAsync,
+          langCounts: _enrolledOnlyEnrLangCounts,
+        ),
+      ];
+
+      final path = await ActiveUsersProgressExcelExporter.exportStats(
+        totalActiveUsers: _enrolledUsersCount,
+        items: items,
+        userDetails: _enrolledUserDetails,
+      );
+
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    kIsWeb ? 'Esportazione Excel completata' : 'File salvato con successo: $path',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'esportazione Excel: $e'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExportingEnrolledProgress = false);
     }
   }
 
@@ -1366,6 +1656,570 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
         ));
       }
 
+      // 6b. Calcolo metriche per TUTTI gli utenti iscritti (per il tab Iscritti)
+      final Set<int> completedEnrolledUserIds = {};
+      final Set<int> startedEnrolledUserIds = {};
+      final Map<String, List<StatMdl>> enrolledUserCourseStatMap = {};
+
+      for (final stat in validStats) {
+        final uId = stat.userId;
+        final cId = stat.idCorso;
+        if (uId == null || cId == null) continue;
+        enrolledUserCourseStatMap.putIfAbsent('$uId-$cId', () => []).add(stat);
+
+        if (!uniqueEnrolledUsers.contains(uId)) continue;
+
+        final hasBadge = badgeCompletedCourseUserSet.contains('$cId-$uId');
+        final st = (stat.statoCompletamentoCorso ?? '').trim().toLowerCase();
+        final isCompleted = hasBadge ||
+            st == 'completato' ||
+            stat.dataCompletamentoCorso != null;
+        final isStarted = st == 'in corso' ||
+            stat.dataCompletamento != null ||
+            stat.primoAccessoPiattaforma != null ||
+            stat.ultimoAccessoPiattaforma != null;
+
+        if (isCompleted) {
+          completedEnrolledUserIds.add(uId);
+        } else if (isStarted) {
+          startedEnrolledUserIds.add(uId);
+        }
+      }
+
+      for (final key in badgeCompletedCourseUserSet) {
+        final parts = key.split('-');
+        if (parts.length == 2) {
+          final uId = int.tryParse(parts[1]);
+          if (uId != null && uniqueEnrolledUsers.contains(uId)) {
+            completedEnrolledUserIds.add(uId);
+          }
+        }
+      }
+
+      int enrMCount = 0;
+      int enrFCount = 0;
+      int enrNCCount = 0;
+      final Map<String, int> enrolledUserLangMap = {};
+      final Map<String, Map<String, int>> enrolledUserGenderLangMap = {};
+      final Map<String, int> enrolledYearMap = {};
+      final Map<String, Map<String, int>> enrolledGenderYearMap = {};
+      final Map<String, Map<String, int>> enrolledYearLangMap = {};
+      final Map<String, Map<String, Map<String, int>>> enrolledYearGenderLangMap = {};
+      final Map<String, PartnerActiveStat> enrolledPartnerStatsMap = {};
+      final enrolledAgeStatLe25 = AgeActiveStat(label: 'Età ≤ 25 anni', key: 'le25');
+      final enrolledAgeStatGt25 = AgeActiveStat(label: 'Età > 25 anni', key: 'gt25');
+      final enrolledAgeStatUnknown = AgeActiveStat(label: 'Età non specificata', key: 'unknown');
+
+      for (final userId in uniqueEnrolledUsers) {
+        final u = usersMap[userId];
+
+        final rawGender = u != null
+            ? _getCustomFieldValue(u, ['gender', 'sesso', 'genere'])?.trim().toLowerCase() ?? ''
+            : '';
+        final String genderKey;
+        if (rawGender == 'm' || rawGender.startsWith('masch') || rawGender == 'male') {
+          enrMCount++;
+          genderKey = 'M';
+        } else if (rawGender == 'f' || rawGender.startsWith('femm') || rawGender == 'female') {
+          enrFCount++;
+          genderKey = 'F';
+        } else {
+          enrNCCount++;
+          genderKey = 'N.C.';
+        }
+
+        final rawLang = u != null
+            ? (_getCustomFieldValue(u, [
+                'user\'s pref course lang',
+                'pref course lang',
+                'course lang',
+                'course_lang',
+                'prefcourselang',
+                'pref_course_lang',
+                'lang',
+              ]) ?? (u.lang?.trim().isNotEmpty == true ? u.lang!.trim() : null))
+            : null;
+
+        final langCode = (rawLang != null && rawLang.trim().isNotEmpty)
+            ? rawLang.trim().toUpperCase()
+            : 'N.D.';
+
+        enrolledUserLangMap[langCode] = (enrolledUserLangMap[langCode] ?? 0) + 1;
+        enrolledUserGenderLangMap.putIfAbsent(langCode, () => {})[genderKey] =
+            (enrolledUserGenderLangMap[langCode]![genderKey] ?? 0) + 1;
+
+        DateTime? firstAccessDate;
+        if (u != null && u.firstaccess != null && u.firstaccess! > 0) {
+          final val = u.firstaccess!;
+          firstAccessDate = val > 10000000000
+              ? DateTime.fromMillisecondsSinceEpoch(val)
+              : DateTime.fromMillisecondsSinceEpoch(val * 1000);
+        }
+        final yearStr = firstAccessDate != null ? firstAccessDate.year.toString() : 'N.D.';
+
+        enrolledYearMap[yearStr] = (enrolledYearMap[yearStr] ?? 0) + 1;
+        enrolledGenderYearMap.putIfAbsent(yearStr, () => {})[genderKey] =
+            (enrolledGenderYearMap[yearStr]![genderKey] ?? 0) + 1;
+        enrolledYearLangMap.putIfAbsent(yearStr, () => {})[langCode] =
+            (enrolledYearLangMap[yearStr]![langCode] ?? 0) + 1;
+        enrolledYearGenderLangMap
+            .putIfAbsent(yearStr, () => {})
+            .putIfAbsent(langCode, () => {})[genderKey] =
+            (enrolledYearGenderLangMap[yearStr]![langCode]![genderKey] ?? 0) + 1;
+
+        int? userAge = u?.age;
+        if (userAge == null) {
+          final statDobStr = userDobFromStatsMap[userId];
+          if (statDobStr != null && statDobStr.isNotEmpty) {
+            final parsed = User.tryParseDobString(statDobStr);
+            if (parsed != null) {
+              final now = DateTime.now();
+              int a = now.year - parsed.year;
+              if (now.month < parsed.month || (now.month == parsed.month && now.day < parsed.day)) {
+                a--;
+              }
+              if (a >= 0 && a <= 115) {
+                userAge = a;
+              }
+            }
+          }
+        }
+
+        final AgeActiveStat targetAgeStat;
+        if (userAge != null) {
+          targetAgeStat = userAge <= 25 ? enrolledAgeStatLe25 : enrolledAgeStatGt25;
+        } else {
+          targetAgeStat = enrolledAgeStatUnknown;
+        }
+
+        if (genderKey == 'M') {
+          targetAgeStat.maleCount++;
+        } else if (genderKey == 'F') {
+          targetAgeStat.femaleCount++;
+        } else {
+          targetAgeStat.unclassifiedCount++;
+        }
+
+        if (completedEnrolledUserIds.contains(userId)) {
+          targetAgeStat.completedCount++;
+        }
+
+        targetAgeStat.langCounts[langCode] = (targetAgeStat.langCounts[langCode] ?? 0) + 1;
+        targetAgeStat.genderLangCounts.putIfAbsent(langCode, () => {})[genderKey] =
+            (targetAgeStat.genderLangCounts[langCode]![genderKey] ?? 0) + 1;
+
+        final rawPartner = u != null ? _getPartnerRef(u) : null;
+        final partnerName = (rawPartner != null && rawPartner.isNotEmpty) ? rawPartner : 'Non specificato';
+        final pStat = enrolledPartnerStatsMap.putIfAbsent(
+          partnerName,
+          () => PartnerActiveStat(partnerName: partnerName),
+        );
+        if (genderKey == 'M') {
+          pStat.maleCount++;
+        } else if (genderKey == 'F') {
+          pStat.femaleCount++;
+        } else {
+          pStat.unclassifiedCount++;
+        }
+        if (completedEnrolledUserIds.contains(userId)) {
+          pStat.completedCount++;
+        }
+        pStat.langCounts[langCode] = (pStat.langCounts[langCode] ?? 0) + 1;
+        pStat.genderLangCounts.putIfAbsent(langCode, () => {})[genderKey] =
+            (pStat.genderLangCounts[langCode]![genderKey] ?? 0) + 1;
+      }
+
+      final sortedEnrolledAgeStats = [
+        enrolledAgeStatLe25,
+        enrolledAgeStatGt25,
+        if (enrolledAgeStatUnknown.total > 0) enrolledAgeStatUnknown,
+      ];
+
+      final sortedEnrolledPartnerStats = enrolledPartnerStatsMap.values.toList()
+        ..sort((a, b) => b.total.compareTo(a.total));
+
+      // Iscrizioni per Corso e aggregati per TUTTI gli utenti iscritti
+      final Map<int, CourseActiveStat> enrolledCourseStatsMap = {};
+      final Set<String> processedEnrolledCourseUser = {};
+
+      int allEnrTotal = 0;
+      int allEnrMale = 0;
+      int allEnrFemale = 0;
+      int allEnrUnclass = 0;
+      int allEnrCompleted = 0;
+      int allEnrSync = 0;
+      int allEnrAsync = 0;
+      final Map<String, int> allEnrLangMap = {};
+      final Map<String, Map<String, int>> allEnrGenderLangMap = {};
+
+      int allEnrCompMale = 0;
+      int allEnrCompFemale = 0;
+      int allEnrCompUnclass = 0;
+      final Map<String, int> allEnrCompLangMap = {};
+      final Map<String, Map<String, int>> allEnrCompGenderLangMap = {};
+
+      int allEnrInProgCount = 0;
+      int allEnrInProgMale = 0;
+      int allEnrInProgFemale = 0;
+      int allEnrInProgUnclass = 0;
+      final Map<String, int> allEnrInProgLangMap = {};
+      final Map<String, Map<String, int>> allEnrInProgGenderLangMap = {};
+
+      int allEnrOnlyEnrCount = 0;
+      int allEnrOnlyEnrMale = 0;
+      int allEnrOnlyEnrFemale = 0;
+      int allEnrOnlyEnrUnclass = 0;
+      final Map<String, int> allEnrOnlyEnrLangMap = {};
+      final Map<String, Map<String, int>> allEnrOnlyEnrGenderLangMap = {};
+
+      for (final item in validEnrolled) {
+        final uId = item.userId;
+        final cId = item.courseId;
+        if (uId == null || cId == null) continue;
+        if (!uniqueEnrolledUsers.contains(uId)) continue;
+        if (!processedEnrolledCourseUser.add('$cId-$uId')) continue;
+
+        final cType = resolveCourseType(cId);
+        allEnrTotal++;
+        if (cType == 'async') {
+          allEnrAsync++;
+        } else {
+          allEnrSync++;
+        }
+
+        final c = coursesMap[cId];
+        final cName = (c?.fullname?.trim().isNotEmpty == true)
+            ? c!.fullname!.trim()
+            : (c?.shortname?.trim().isNotEmpty == true
+                ? c!.shortname!.trim()
+                : (statCourseNames[cId] ?? 'Corso #$cId'));
+        final cShort = (c?.shortname?.trim().isNotEmpty == true)
+            ? c!.shortname!.trim()
+            : (statCourseShorts[cId] ?? 'ID: $cId');
+
+        final stat = enrolledCourseStatsMap.putIfAbsent(
+          cId,
+          () => CourseActiveStat(
+            courseId: cId,
+            courseName: cName,
+            courseShortname: cShort,
+            courseType: cType,
+          ),
+        );
+
+        final isComp = completedCourseUserSet.contains('$cId-$uId');
+        final isInProg = !isComp && startedCourseUserSet.contains('$cId-$uId');
+
+        if (isComp) {
+          stat.completedCount++;
+          allEnrCompleted++;
+        } else if (isInProg) {
+          allEnrInProgCount++;
+        } else {
+          allEnrOnlyEnrCount++;
+        }
+
+        final u = usersMap[uId];
+        final String genderKey;
+        if (u != null) {
+          final rawGender = _getCustomFieldValue(u, ['gender', 'sesso', 'genere'])?.trim().toLowerCase() ?? '';
+          if (rawGender == 'm' || rawGender.startsWith('masch') || rawGender == 'male') {
+            stat.maleCount++;
+            allEnrMale++;
+            genderKey = 'M';
+            if (isComp) {
+              allEnrCompMale++;
+            } else if (isInProg) {
+              allEnrInProgMale++;
+            } else {
+              allEnrOnlyEnrMale++;
+            }
+          } else if (rawGender == 'f' || rawGender.startsWith('femm') || rawGender == 'female') {
+            stat.femaleCount++;
+            allEnrFemale++;
+            genderKey = 'F';
+            if (isComp) {
+              allEnrCompFemale++;
+            } else if (isInProg) {
+              allEnrInProgFemale++;
+            } else {
+              allEnrOnlyEnrFemale++;
+            }
+          } else {
+            stat.unclassifiedCount++;
+            allEnrUnclass++;
+            genderKey = 'N.C.';
+            if (isComp) {
+              allEnrCompUnclass++;
+            } else if (isInProg) {
+              allEnrInProgUnclass++;
+            } else {
+              allEnrOnlyEnrUnclass++;
+            }
+          }
+
+          final rawLang = _getCustomFieldValue(u, [
+            'user\'s pref course lang',
+            'pref course lang',
+            'course lang',
+            'course_lang',
+            'prefcourselang',
+            'pref_course_lang',
+            'lang',
+          ]) ?? (u.lang?.trim().isNotEmpty == true ? u.lang!.trim() : null);
+          final userLang = (rawLang != null && rawLang.trim().isNotEmpty)
+              ? rawLang.trim().toUpperCase()
+              : 'N.D.';
+          stat.langCounts[userLang] = (stat.langCounts[userLang] ?? 0) + 1;
+          allEnrLangMap[userLang] = (allEnrLangMap[userLang] ?? 0) + 1;
+          allEnrGenderLangMap.putIfAbsent(userLang, () => {})[genderKey] =
+              (allEnrGenderLangMap[userLang]![genderKey] ?? 0) + 1;
+
+          if (isComp) {
+            allEnrCompLangMap[userLang] = (allEnrCompLangMap[userLang] ?? 0) + 1;
+            allEnrCompGenderLangMap.putIfAbsent(userLang, () => {})[genderKey] =
+                (allEnrCompGenderLangMap[userLang]![genderKey] ?? 0) + 1;
+          } else if (isInProg) {
+            allEnrInProgLangMap[userLang] = (allEnrInProgLangMap[userLang] ?? 0) + 1;
+            allEnrInProgGenderLangMap.putIfAbsent(userLang, () => {})[genderKey] =
+                (allEnrInProgGenderLangMap[userLang]![genderKey] ?? 0) + 1;
+          } else {
+            allEnrOnlyEnrLangMap[userLang] = (allEnrOnlyEnrLangMap[userLang] ?? 0) + 1;
+            allEnrOnlyEnrGenderLangMap.putIfAbsent(userLang, () => {})[genderKey] =
+                (allEnrOnlyEnrGenderLangMap[userLang]![genderKey] ?? 0) + 1;
+          }
+        } else {
+          stat.unclassifiedCount++;
+          allEnrUnclass++;
+          genderKey = 'N.C.';
+          if (isComp) {
+            allEnrCompUnclass++;
+          } else if (isInProg) {
+            allEnrInProgUnclass++;
+          } else {
+            allEnrOnlyEnrUnclass++;
+          }
+
+          stat.langCounts['N.D.'] = (stat.langCounts['N.D.'] ?? 0) + 1;
+          allEnrLangMap['N.D.'] = (allEnrLangMap['N.D.'] ?? 0) + 1;
+          allEnrGenderLangMap.putIfAbsent('N.D.', () => {})[genderKey] =
+              (allEnrGenderLangMap['N.D.']![genderKey] ?? 0) + 1;
+
+          if (isComp) {
+            allEnrCompLangMap['N.D.'] = (allEnrCompLangMap['N.D.'] ?? 0) + 1;
+            allEnrCompGenderLangMap.putIfAbsent('N.D.', () => {})[genderKey] =
+                (allEnrCompGenderLangMap['N.D.']![genderKey] ?? 0) + 1;
+          } else if (isInProg) {
+            allEnrInProgLangMap['N.D.'] = (allEnrInProgLangMap['N.D.'] ?? 0) + 1;
+            allEnrInProgGenderLangMap.putIfAbsent('N.D.', () => {})[genderKey] =
+                (allEnrInProgGenderLangMap['N.D.']![genderKey] ?? 0) + 1;
+          } else {
+            allEnrOnlyEnrLangMap['N.D.'] = (allEnrOnlyEnrLangMap['N.D.'] ?? 0) + 1;
+            allEnrOnlyEnrGenderLangMap.putIfAbsent('N.D.', () => {})[genderKey] =
+                (allEnrOnlyEnrGenderLangMap['N.D.']![genderKey] ?? 0) + 1;
+          }
+        }
+      }
+
+      final Map<String, int> allEnrOtherLangMap = {};
+      final Map<String, Map<String, int>> allEnrOtherGenderLangMap = {};
+      for (final e in allEnrInProgLangMap.entries) {
+        allEnrOtherLangMap[e.key] = (allEnrOtherLangMap[e.key] ?? 0) + e.value;
+      }
+      for (final e in allEnrOnlyEnrLangMap.entries) {
+        allEnrOtherLangMap[e.key] = (allEnrOtherLangMap[e.key] ?? 0) + e.value;
+      }
+      for (final e in allEnrInProgGenderLangMap.entries) {
+        final lang = e.key;
+        for (final g in e.value.entries) {
+          allEnrOtherGenderLangMap.putIfAbsent(lang, () => {})[g.key] =
+              (allEnrOtherGenderLangMap[lang]![g.key] ?? 0) + g.value;
+        }
+      }
+      for (final e in allEnrOnlyEnrGenderLangMap.entries) {
+        final lang = e.key;
+        for (final g in e.value.entries) {
+          allEnrOtherGenderLangMap.putIfAbsent(lang, () => {})[g.key] =
+              (allEnrOtherGenderLangMap[lang]![g.key] ?? 0) + g.value;
+        }
+      }
+
+      final sortedEnrolledCourseStats = enrolledCourseStatsMap.values.toList()
+        ..sort((a, b) => b.total.compareTo(a.total));
+
+      // Progresso Utenti Iscritti (Completati, In corso, Solo iscritti)
+      final Map<int, Set<int>> allUserEnrolledCourses = {};
+      for (final item in validEnrolled) {
+        final uId = item.userId;
+        final cId = item.courseId;
+        if (uId != null && cId != null && uniqueEnrolledUsers.contains(uId)) {
+          allUserEnrolledCourses.putIfAbsent(uId, () => {}).add(cId);
+        }
+      }
+
+      String getCourseTypeForEnrolledUser(int uId, int cId) {
+        final acts = enrolledUserCourseStatMap['$uId-$cId'];
+        if (acts != null && acts.isNotEmpty) {
+          final hasMeet = acts.any((a) => (a.ntag ?? '').trim().toLowerCase() == 'meet');
+          if (hasMeet) return 'sync';
+          const asyncTags = {'async', 'asyncp'};
+          final isAsync = acts.any((a) => asyncTags.contains((a.ntag ?? '').trim().toLowerCase()));
+          return isAsync ? 'async' : 'sync';
+        }
+        return resolveCourseType(cId);
+      }
+
+      int enrCompM = 0, enrCompF = 0, enrCompNC = 0;
+      int enrCompSync = 0, enrCompAsync = 0;
+      int enrInProgM = 0, enrInProgF = 0, enrInProgNC = 0;
+      int enrInProgSync = 0, enrInProgAsync = 0;
+      int enrOnlyM = 0, enrOnlyF = 0, enrOnlyNC = 0;
+      int enrOnlySync = 0, enrOnlyAsync = 0;
+      final Map<String, int> enrCompLangMap = {};
+      final Map<String, int> enrInProgLangMap = {};
+      final Map<String, int> enrOnlyLangMap = {};
+      final List<ActiveUserDetailExportItem> enrolledUserDetailsList = [];
+
+      for (final uId in uniqueEnrolledUsers) {
+        final u = usersMap[uId];
+        final rawGender = u != null
+            ? _getCustomFieldValue(u, ['gender', 'sesso', 'genere'])?.trim().toLowerCase() ?? ''
+            : '';
+        final isM = rawGender == 'm' || rawGender.startsWith('masch') || rawGender == 'male';
+        final isF = rawGender == 'f' || rawGender.startsWith('femm') || rawGender == 'female';
+
+        final rawLang = u != null
+            ? (_getCustomFieldValue(u, [
+                'user\'s pref course lang',
+                'pref course lang',
+                'course lang',
+                'course_lang',
+                'prefcourselang',
+                'pref_course_lang',
+                'lang',
+              ]) ?? (u.lang?.trim().isNotEmpty == true ? u.lang!.trim() : null))
+            : null;
+        final userLang = (rawLang != null && rawLang.trim().isNotEmpty)
+            ? rawLang.trim().toUpperCase()
+            : 'N.D.';
+
+        final userCourses = <int>{
+          ...?allUserEnrolledCourses[uId],
+          for (final key in enrolledUserCourseStatMap.keys)
+            if (key.startsWith('$uId-')) int.tryParse(key.substring('$uId-'.length)) ?? 0,
+          for (final key in badgeCompletedCourseUserSet)
+            if (key.endsWith('-$uId')) int.tryParse(key.substring(0, key.indexOf('-'))) ?? 0,
+        }..remove(0)..removeWhere((cId) => excludedCourseIds.contains(cId));
+
+        Set<int> targetCourses;
+        Set<String> types;
+        String statusStr;
+
+        if (completedEnrolledUserIds.contains(uId)) {
+          statusStr = 'Completato';
+          enrCompLangMap[userLang] = (enrCompLangMap[userLang] ?? 0) + 1;
+          if (isM) {
+            enrCompM++;
+          } else if (isF) {
+            enrCompF++;
+          } else {
+            enrCompNC++;
+          }
+
+          final completedCourseIds = userCourses.where((cId) {
+            if (completedCourseUserSet.contains('$cId-$uId')) return true;
+            final acts = enrolledUserCourseStatMap['$uId-$cId'];
+            return acts?.any((a) =>
+                    (a.statoCompletamentoCorso ?? '').trim().toLowerCase() == 'completato' ||
+                    a.dataCompletamentoCorso != null) ==
+                true;
+          }).toSet();
+
+          targetCourses = completedCourseIds.isNotEmpty ? completedCourseIds : userCourses;
+          types = targetCourses.map((cId) => getCourseTypeForEnrolledUser(uId, cId)).toSet();
+          if (types.contains('sync')) enrCompSync++;
+          if (types.contains('async')) enrCompAsync++;
+          if (types.isEmpty) enrCompSync++;
+        } else if (startedEnrolledUserIds.contains(uId)) {
+          statusStr = 'In corso';
+          enrInProgLangMap[userLang] = (enrInProgLangMap[userLang] ?? 0) + 1;
+          if (isM) {
+            enrInProgM++;
+          } else if (isF) {
+            enrInProgF++;
+          } else {
+            enrInProgNC++;
+          }
+
+          final startedCourseIds = userCourses.where((cId) {
+            final acts = enrolledUserCourseStatMap['$uId-$cId'];
+            return acts?.any((a) =>
+                    (a.statoCompletamentoCorso ?? '').trim().toLowerCase() == 'in corso' ||
+                    a.dataCompletamento != null ||
+                    a.primoAccessoPiattaforma != null ||
+                    a.ultimoAccessoPiattaforma != null) ==
+                true;
+          }).toSet();
+
+          targetCourses = startedCourseIds.isNotEmpty ? startedCourseIds : userCourses;
+          types = targetCourses.map((cId) => getCourseTypeForEnrolledUser(uId, cId)).toSet();
+          if (types.contains('sync')) enrInProgSync++;
+          if (types.contains('async')) enrInProgAsync++;
+          if (types.isEmpty) enrInProgSync++;
+        } else {
+          statusStr = 'Solo iscritto';
+          enrOnlyLangMap[userLang] = (enrOnlyLangMap[userLang] ?? 0) + 1;
+          if (isM) {
+            enrOnlyM++;
+          } else if (isF) {
+            enrOnlyF++;
+          } else {
+            enrOnlyNC++;
+          }
+
+          targetCourses = userCourses;
+          types = targetCourses.map((cId) => getCourseTypeForEnrolledUser(uId, cId)).toSet();
+          if (types.contains('sync')) enrOnlySync++;
+          if (types.contains('async')) enrOnlyAsync++;
+          if (types.isEmpty) enrOnlySync++;
+        }
+
+        final fullName = (u?.fullname?.trim().isNotEmpty == true) ? u!.fullname!.trim() : 'Utente #$uId';
+        final username = u?.username ?? '-';
+        final email = u?.email ?? '-';
+        final genderStr = isM ? 'M' : (isF ? 'F' : 'N.C.');
+
+        String courseTypeStr;
+        if (types.contains('sync') && types.contains('async')) {
+          courseTypeStr = 'Sync & Async';
+        } else if (types.contains('async')) {
+          courseTypeStr = 'Async';
+        } else {
+          courseTypeStr = 'Sync';
+        }
+
+        final coursesNames = targetCourses.map((cId) {
+          final c = coursesMap[cId];
+          return (c?.fullname?.trim().isNotEmpty == true)
+              ? c!.fullname!.trim()
+              : (c?.shortname?.trim().isNotEmpty == true
+                  ? c!.shortname!.trim()
+                  : (statCourseNames[cId] ?? 'Corso #$cId'));
+        }).join(', ');
+
+        enrolledUserDetailsList.add(ActiveUserDetailExportItem(
+          userId: uId,
+          username: username,
+          fullName: fullName,
+          email: email,
+          gender: genderStr,
+          language: userLang,
+          status: statusStr,
+          courseType: courseTypeStr,
+          coursesSummary: coursesNames.isNotEmpty ? coursesNames : '-',
+        ));
+      }
+
       // 7. Statistiche Feedback (feedback_for_bi) per Lingua e per Corso
       final rawFeedback = await isar.feedbackForBis.where().findAll();
       final validFeedback = rawFeedback.where((f) {
@@ -1758,6 +2612,76 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
           _totalFeedbackCount = totalFeedbacks;
           _dgCnectKpis = computedDgCnectKpis;
 
+          // Assegnazioni per Tab Iscritti
+          _enrolledMaleCount = enrMCount;
+          _enrolledFemaleCount = enrFCount;
+          _enrolledUnclassifiedCount = enrNCCount;
+          _enrolledUserLangCounts = enrolledUserLangMap;
+          _enrolledUserGenderLangCounts = enrolledUserGenderLangMap;
+          _enrolledYearCounts = enrolledYearMap;
+          _enrolledGenderYearCounts = enrolledGenderYearMap;
+          _enrolledYearLangCounts = enrolledYearLangMap;
+          _enrolledYearGenderLangCounts = enrolledYearGenderLangMap;
+
+          _allCourseEnrollmentsTotal = allEnrTotal;
+          _allCourseEnrollmentsMale = allEnrMale;
+          _allCourseEnrollmentsFemale = allEnrFemale;
+          _allCourseEnrollmentsUnclassified = allEnrUnclass;
+          _allCourseEnrollmentsCompleted = allEnrCompleted;
+          _allCourseEnrollmentsSync = allEnrSync;
+          _allCourseEnrollmentsAsync = allEnrAsync;
+          _allCourseEnrollmentsLangCounts = allEnrLangMap;
+          _allCourseEnrollmentsGenderLangCounts = allEnrGenderLangMap;
+
+          _allCourseEnrCompMale = allEnrCompMale;
+          _allCourseEnrCompFemale = allEnrCompFemale;
+          _allCourseEnrCompUnclass = allEnrCompUnclass;
+          _allCourseEnrCompLangCounts = allEnrCompLangMap;
+          _allCourseEnrCompGenderLangCounts = allEnrCompGenderLangMap;
+
+          _allCourseEnrollmentsInProgress = allEnrInProgCount;
+          _allCourseEnrInProgMale = allEnrInProgMale;
+          _allCourseEnrInProgFemale = allEnrInProgFemale;
+          _allCourseEnrInProgUnclass = allEnrInProgUnclass;
+          _allCourseEnrInProgLangCounts = allEnrInProgLangMap;
+          _allCourseEnrInProgGenderLangCounts = allEnrInProgGenderLangMap;
+
+          _allCourseEnrollmentsOnlyEnrolled = allEnrOnlyEnrCount;
+          _allCourseEnrOnlyEnrMale = allEnrOnlyEnrMale;
+          _allCourseEnrOnlyEnrFemale = allEnrOnlyEnrFemale;
+          _allCourseEnrOnlyEnrUnclass = allEnrOnlyEnrUnclass;
+          _allCourseEnrOnlyEnrLangCounts = allEnrOnlyEnrLangMap;
+          _allCourseEnrOnlyEnrGenderLangCounts = allEnrOnlyEnrGenderLangMap;
+
+          _allCourseEnrOtherLangCounts = allEnrOtherLangMap;
+          _allCourseEnrOtherGenderLangCounts = allEnrOtherGenderLangMap;
+
+          _enrolledCompMale = enrCompM;
+          _enrolledCompFemale = enrCompF;
+          _enrolledCompUnclass = enrCompNC;
+          _enrolledCompSync = enrCompSync;
+          _enrolledCompAsync = enrCompAsync;
+          _enrolledCompLangCounts = enrCompLangMap;
+
+          _enrolledInProgMale = enrInProgM;
+          _enrolledInProgFemale = enrInProgF;
+          _enrolledInProgUnclass = enrInProgNC;
+          _enrolledInProgSync = enrInProgSync;
+          _enrolledInProgAsync = enrInProgAsync;
+          _enrolledInProgLangCounts = enrInProgLangMap;
+
+          _enrolledOnlyEnrMale = enrOnlyM;
+          _enrolledOnlyEnrFemale = enrOnlyF;
+          _enrolledOnlyEnrUnclass = enrOnlyNC;
+          _enrolledOnlyEnrSync = enrOnlySync;
+          _enrolledOnlyEnrAsync = enrOnlyAsync;
+          _enrolledOnlyEnrLangCounts = enrOnlyLangMap;
+
+          _enrolledCourseStats = sortedEnrolledCourseStats;
+          _enrolledPartnerStats = sortedEnrolledPartnerStats;
+          _enrolledAgeStats = sortedEnrolledAgeStats;
+          _enrolledUserDetails = enrolledUserDetailsList;
+
           _isLoading = false;
         });
       }
@@ -1778,14 +2702,111 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1240),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade200, width: 1.5),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
+            child: Row(
               children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  padding: const EdgeInsets.all(3),
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    indicator: BoxDecoration(
+                      color: AppTheme.primaryBlue,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.25),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.grey.shade700,
+                    labelStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.3,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    tabs: const [
+                      Tab(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.bolt_rounded, size: 18),
+                              SizedBox(width: 8),
+                              Text('Attivi'),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Tab(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.how_to_reg_rounded, size: 18),
+                              SizedBox(width: 8),
+                              Text('Iscritti'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildActiveTabContent(),
+                _buildEnrolledTabContent(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveTabContent() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(28),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1240),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                 // Metriche KPI Responsive (Utenti Partecipanti, Utenti Attivi & Utenti Iscritti)
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -1838,10 +2859,6 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
                 _buildDgCnectKpiSection(),
                 const SizedBox(height: 28),
 
-                // Grafico Totale Iscrizioni (Tutti i corsi: Genere e Lingua)
-                _buildTotalEnrollmentsChart(),
-                const SizedBox(height: 28),
-
                 // Grafico Distribuzione Gender Utenti Attivi
                 _buildGenderDistributionChart(),
                 const SizedBox(height: 28),
@@ -1872,13 +2889,2079 @@ class _HomeDashboardViewState extends ConsumerState<HomeDashboardView> {
 
                 // Statistiche Feedback: Medie per Corso e Divise per Lingua
                 _buildCourseFeedbackByLangChart(),
-              ],
-            ),
+            ],
           ),
         ),
       ),
     );
   }
+
+  Widget _buildEnrolledTabContent() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(28),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1240),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Grafico Totale Iscrizioni (Tutti i corsi: Genere e Lingua)
+              _buildTotalEnrollmentsChart(),
+              const SizedBox(height: 28),
+
+              // Grafico Distribuzione Gender Utenti Iscritti
+              _buildEnrolledGenderDistributionChart(),
+              const SizedBox(height: 28),
+
+              // Grafico Distribuzione Utenti Iscritti per Partner Reference (Genere e Lingua)
+              _buildEnrolledPartnerStatsChart(),
+              const SizedBox(height: 28),
+
+              // Grafico Distribuzione Utenti Iscritti per Fascia d'Età (<= 25 / > 25 anni con Genere e Lingua)
+              _buildEnrolledAgeDistributionChart(),
+              const SizedBox(height: 28),
+
+              // Grafico Stato Avanzamento Utenti Iscritti (Completati, In corso, Solo iscritti)
+              _buildEnrolledUsersProgressChart(),
+              const SizedBox(height: 28),
+
+              // Grafico Distribuzione Totale Iscrizioni Corsi (Utenti Iscritti)
+              _buildTotalCourseEnrollmentsEnrolledChart(),
+              const SizedBox(height: 28),
+
+              // Grafico Distribuzione Iscrizioni per Corso (Utenti Iscritti con Gender)
+              _buildEnrolledCourseEnrollmentGenderChart(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- SEZIONE WIDGET TAB ISCRITTI ---
+Widget _buildEnrolledGenderDistributionChart() {
+    final hasYearFilter = _selectedEnrolledGenderYear != null && _enrolledYearCounts.containsKey(_selectedEnrolledGenderYear);
+    final total = hasYearFilter
+        ? (_enrolledYearCounts[_selectedEnrolledGenderYear] ?? 0)
+        : _enrolledUsersCount;
+    final maleCount = hasYearFilter
+        ? (_enrolledGenderYearCounts[_selectedEnrolledGenderYear]?['M'] ?? 0)
+        : _enrolledMaleCount;
+    final femaleCount = hasYearFilter
+        ? (_enrolledGenderYearCounts[_selectedEnrolledGenderYear]?['F'] ?? 0)
+        : _enrolledFemaleCount;
+    final unclassCount = hasYearFilter
+        ? (_enrolledGenderYearCounts[_selectedEnrolledGenderYear]?['N.C.'] ?? 0)
+        : _enrolledUnclassifiedCount;
+
+    final malePct = total > 0 ? (maleCount / total) : 0.0;
+    final femalePct = total > 0 ? (femaleCount / total) : 0.0;
+    final unclassPct = total > 0 ? (unclassCount / total) : 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(4),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header del Grafico
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withAlpha(16),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.pie_chart_rounded, color: Color(0xFF6366F1), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'DISTRIBUZIONE GENDER (UTENTI ISCRITTI)',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.6,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        hasYearFilter
+                            ? 'Ripartizione per genere nel $_selectedEnrolledGenderYear calcolata su $total utenti iscritti'
+                            : 'Ripartizione per genere calcolata sui $total utenti iscritti',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFC7D2FE)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.people_outline_rounded, size: 14, color: Color(0xFF4F46E5)),
+                    const SizedBox(width: 5),
+                    Text(
+                      hasYearFilter
+                          ? '$total Utenti ($_selectedEnrolledGenderYear)'
+                          : '$total Utenti Iscritti',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF4F46E5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_enrolledYearCounts.length > 1) ...[
+            const SizedBox(height: 14),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  const Text(
+                    'Filtra per anno di iscrizione:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () => setState(() => _selectedEnrolledGenderYear = null),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _selectedEnrolledGenderYear == null
+                            ? const Color(0xFF4F46E5)
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: _selectedEnrolledGenderYear == null
+                              ? const Color(0xFF4F46E5)
+                              : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Text(
+                        'Tutti gli anni ($_enrolledUsersCount)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _selectedEnrolledGenderYear == null ? Colors.white : Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  ...(() {
+                    final sortedYears = _enrolledYearCounts.entries.toList()
+                      ..sort((a, b) {
+                        if (a.key == 'N.D.') return 1;
+                        if (b.key == 'N.D.') return -1;
+                        return b.key.compareTo(a.key);
+                      });
+                    return sortedYears.map((entry) {
+                      final isSel = _selectedEnrolledGenderYear == entry.key;
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: InkWell(
+                          onTap: () => setState(() => _selectedEnrolledGenderYear = isSel ? null : entry.key),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isSel ? const Color(0xFFD97706) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isSel ? const Color(0xFFD97706) : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Text(
+                              '${entry.key} (${entry.value})',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isSel ? Colors.white : Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    });
+                  })(),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 18),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 20),
+
+          // Corpo: Donut Chart + Breakdown
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 660;
+
+              final donutWidget = Center(
+                child: SizedBox(
+                  width: 190,
+                  height: 190,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(
+                        size: const Size(190, 190),
+                        painter: _GenderDonutPainter(
+                          male: maleCount,
+                          female: femaleCount,
+                          unclassified: unclassCount,
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$total',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            hasYearFilter ? 'Attivi ($_selectedEnrolledGenderYear)' : 'Attivi',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+
+              final breakdownWidget = Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildGenderBar(
+                    label: 'Uomini (M)',
+                    count: maleCount,
+                    percentage: malePct,
+                    color: const Color(0xFF2563EB),
+                    bgColor: const Color(0xFFEFF6FF),
+                    icon: Icons.male_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGenderBar(
+                    label: 'Donne (F)',
+                    count: femaleCount,
+                    percentage: femalePct,
+                    color: const Color(0xFFE11D48),
+                    bgColor: const Color(0xFFFFF1F2),
+                    icon: Icons.female_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGenderBar(
+                    label: 'Non classificato',
+                    count: unclassCount,
+                    percentage: unclassPct,
+                    color: const Color(0xFF64748B),
+                    bgColor: const Color(0xFFF8FAFC),
+                    icon: Icons.help_outline_rounded,
+                  ),
+                ],
+              );
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 16),
+                    donutWidget,
+                    const SizedBox(width: 36),
+                    Expanded(child: breakdownWidget),
+                    const SizedBox(width: 16),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  donutWidget,
+                  const SizedBox(height: 24),
+                  breakdownWidget,
+                ],
+              );
+            },
+          ),
+          _buildEnrolledYearDistributionSection(),
+          _buildEnrolledLanguageDistributionSection(),
+        ],
+      ),
+    );
+  }
+
+Widget _buildEnrolledYearDistributionSection() {
+    if (_enrolledYearCounts.isEmpty) return const SizedBox.shrink();
+
+    final total = _enrolledUsersCount;
+    final sortedYears = _enrolledYearCounts.entries.toList()
+      ..sort((a, b) {
+        if (a.key == 'N.D.') return 1;
+        if (b.key == 'N.D.') return -1;
+        return b.key.compareTo(a.key);
+      });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 22),
+        const Divider(height: 1, color: Color(0xFFF1F5F9)),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withAlpha(20),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.calendar_today_rounded, color: Color(0xFFD97706), size: 18),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'DISTRIBUZIONE PER ANNO DI ISCRIZIONE (DATA PRIMO ACCESSO)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Text(
+                '${sortedYears.length} ann${sortedYears.length == 1 ? 'o' : 'i'}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFD97706),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: sortedYears.map((entry) {
+            final year = entry.key;
+            final count = entry.value;
+            final pct = total > 0 ? (count / total * 100) : 0.0;
+            final genderBreakdown = _enrolledGenderYearCounts[year] ?? {};
+            final mCount = genderBreakdown['M'] ?? 0;
+            final fCount = genderBreakdown['F'] ?? 0;
+            final ncCount = genderBreakdown['N.C.'] ?? 0;
+            final isSelected = _selectedEnrolledGenderYear == year;
+
+            return InkWell(
+              onTap: () {
+                setState(() {
+                  _selectedEnrolledGenderYear = isSelected ? null : year;
+                });
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFFFFBEB) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFFF59E0B) : Colors.grey.shade200,
+                    width: isSelected ? 1.5 : 1.0,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFFF59E0B).withAlpha(25),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD97706).withAlpha(isSelected ? 35 : 20),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.event_note_rounded, size: 13, color: Color(0xFFB45309)),
+                              const SizedBox(width: 4),
+                              Text(
+                                year,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFB45309),
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$count',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '(${pct.toStringAsFixed(1)}%)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildMiniGenderTag('M', mCount, const Color(0xFF2563EB)),
+                        const SizedBox(width: 6),
+                        _buildMiniGenderTag('F', fCount, const Color(0xFFE11D48)),
+                        if (ncCount > 0) ...[
+                          const SizedBox(width: 6),
+                          _buildMiniGenderTag('N.C.', ncCount, const Color(0xFF64748B)),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+Widget _buildEnrolledLanguageDistributionSection() {
+    final hasYearFilter = _selectedEnrolledGenderYear != null && _enrolledYearLangCounts.containsKey(_selectedEnrolledGenderYear);
+    final Map<String, int> currentLangCounts = hasYearFilter
+        ? (_enrolledYearLangCounts[_selectedEnrolledGenderYear] ?? {})
+        : _enrolledUserLangCounts;
+    final Map<String, Map<String, int>> currentGenderLangCounts = hasYearFilter
+        ? (_enrolledYearGenderLangCounts[_selectedEnrolledGenderYear] ?? {})
+        : _enrolledUserGenderLangCounts;
+    final total = hasYearFilter
+        ? (_enrolledYearCounts[_selectedEnrolledGenderYear] ?? 0)
+        : _enrolledUsersCount;
+
+    if (currentLangCounts.isEmpty) return const SizedBox.shrink();
+
+    final sortedLangs = currentLangCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 22),
+        const Divider(height: 1, color: Color(0xFFF1F5F9)),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0EA5E9).withAlpha(18),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.language_rounded, color: Color(0xFF0284C7), size: 18),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  hasYearFilter
+                      ? 'DISTRIBUZIONE PER LINGUA ($_selectedEnrolledGenderYear)'
+                      : 'DISTRIBUZIONE PER LINGUA (USER\'S PREF COURSE LANG)',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFBAE6FD)),
+              ),
+              child: Text(
+                '${sortedLangs.length} lingu${sortedLangs.length == 1 ? 'a' : 'e'}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0284C7),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: sortedLangs.map((entry) {
+            final lang = entry.key;
+            final count = entry.value;
+            final pct = total > 0 ? (count / total * 100) : 0.0;
+            final genderBreakdown = currentGenderLangCounts[lang] ?? {};
+            final mCount = genderBreakdown['M'] ?? 0;
+            final fCount = genderBreakdown['F'] ?? 0;
+            final ncCount = genderBreakdown['N.C.'] ?? 0;
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7).withAlpha(20),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          lang,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0369A1),
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$count',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '(${pct.toStringAsFixed(1)}%)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildMiniGenderTag('M', mCount, const Color(0xFF2563EB)),
+                      const SizedBox(width: 6),
+                      _buildMiniGenderTag('F', fCount, const Color(0xFFE11D48)),
+                      if (ncCount > 0) ...[
+                        const SizedBox(width: 6),
+                        _buildMiniGenderTag('N.C.', ncCount, const Color(0xFF64748B)),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+Widget _buildEnrolledPartnerStatsChart() {
+    final displayedPartners = _showAllEnrolledPartners
+        ? _enrolledPartnerStats
+        : _enrolledPartnerStats.take(8).toList();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con titolo e legenda
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 980;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F766E).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.corporate_fare_rounded, color: Color(0xFF0F766E), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Distribuzione Utenti Iscritti per Partner Reference',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Ripartizione degli utenti iscritti per partner reference con dettaglio per genere e lingua',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
+                  _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
+                  _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
+                  _buildCourseLegendItem(const Color(0xFF16A34A), 'Completati'),
+                  const SizedBox(width: 4),
+                  OutlinedButton.icon(
+                    onPressed: (_enrolledPartnerStats.isEmpty || _isExportingEnrolledPartners)
+                        ? null
+                        : _exportEnrolledPartnersToExcel,
+                    icon: _isExportingEnrolledPartners
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16),
+                    label: Text(
+                      _isExportingEnrolledPartners ? 'Esportazione...' : 'Esporta Excel',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF16A34A),
+                      side: const BorderSide(color: Color(0xFF86EFAC)),
+                      backgroundColor: const Color(0xFFF0FDF4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    actionsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  actionsWidget,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 20),
+
+          if (_enrolledPartnerStats.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 36),
+                child: Column(
+                  children: [
+                    Icon(Icons.business_outlined, size: 40, color: Colors.grey.shade400),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Nessun dato partner reference per gli utenti iscritti',
+                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else ...[
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: displayedPartners.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 18),
+              itemBuilder: (context, index) {
+                final partner = displayedPartners[index];
+                return _buildPartnerActiveRow(index + 1, partner);
+              },
+            ),
+            if (_enrolledPartnerStats.length > 8) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _showAllEnrolledPartners = !_showAllEnrolledPartners;
+                    });
+                  },
+                  icon: Icon(
+                    _showAllEnrolledPartners ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    _showAllEnrolledPartners
+                        ? 'Mostra solo i principali 8 partner'
+                        : 'Mostra tutti i ${_enrolledPartnerStats.length} partner',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryBlue,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+Widget _buildEnrolledAgeDistributionChart() {
+    final grandTotal = _enrolledUsersCount > 0
+        ? _enrolledUsersCount
+        : _enrolledAgeStats.fold<int>(0, (sum, i) => sum + i.total);
+
+    final le25Stat = _enrolledAgeStats.firstWhere(
+      (s) => s.key == 'le25',
+      orElse: () => AgeActiveStat(label: 'Età ≤ 25 anni', key: 'le25'),
+    );
+    final gt25Stat = _enrolledAgeStats.firstWhere(
+      (s) => s.key == 'gt25',
+      orElse: () => AgeActiveStat(label: 'Età > 25 anni', key: 'gt25'),
+    );
+    final unknownStat = _enrolledAgeStats.firstWhere(
+      (s) => s.key == 'unknown',
+      orElse: () => AgeActiveStat(label: 'Età non specificata', key: 'unknown'),
+    );
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con titolo, legenda ed export
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 980;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.cake_rounded, color: Color(0xFF6366F1), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Distribuzione Utenti Iscritti per Fascia d\'Età',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Ripartizione utenti con età ≤ 25 anni e > 25 anni con dettaglio per genere e lingua',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
+                  _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
+                  _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
+                  _buildCourseLegendItem(const Color(0xFF16A34A), 'Completati'),
+                  const SizedBox(width: 4),
+                  OutlinedButton.icon(
+                    onPressed: (_enrolledAgeStats.isEmpty || _isExportingEnrolledAge)
+                        ? null
+                        : _exportEnrolledAgeToExcel,
+                    icon: _isExportingEnrolledAge
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16),
+                    label: Text(
+                      _isExportingEnrolledAge ? 'Esportazione...' : 'Esporta Excel',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF16A34A),
+                      side: const BorderSide(color: Color(0xFF86EFAC)),
+                      backgroundColor: const Color(0xFFF0FDF4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    actionsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  actionsWidget,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+
+          // Barra di proporzione visiva (≤ 25 vs > 25 vs Non specificato)
+          if (grandTotal > 0) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                height: 16,
+                width: double.infinity,
+                color: Colors.grey.shade200,
+                child: Row(
+                  children: [
+                    if (le25Stat.total > 0)
+                      Expanded(
+                        flex: le25Stat.total,
+                        child: Container(color: const Color(0xFF6366F1)),
+                      ),
+                    if (gt25Stat.total > 0)
+                      Expanded(
+                        flex: gt25Stat.total,
+                        child: Container(color: const Color(0xFF0284C7)),
+                      ),
+                    if (unknownStat.total > 0)
+                      Expanded(
+                        flex: unknownStat.total,
+                        child: Container(color: const Color(0xFF94A3B8)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 16,
+              runSpacing: 6,
+              children: [
+                _buildAgeProportionLegend(
+                  const Color(0xFF6366F1),
+                  '≤ 25 anni',
+                  le25Stat.total,
+                  grandTotal > 0 ? (le25Stat.total / grandTotal * 100) : 0,
+                ),
+                _buildAgeProportionLegend(
+                  const Color(0xFF0284C7),
+                  '> 25 anni',
+                  gt25Stat.total,
+                  grandTotal > 0 ? (gt25Stat.total / grandTotal * 100) : 0,
+                ),
+                if (unknownStat.total > 0)
+                  _buildAgeProportionLegend(
+                    const Color(0xFF94A3B8),
+                    'Non specificato',
+                    unknownStat.total,
+                    grandTotal > 0 ? (unknownStat.total / grandTotal * 100) : 0,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // Card di dettaglio per ciascuna fascia d'età
+          if (_enrolledAgeStats.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  'Nessun dato disponibile sulla distribuzione per età.',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                ),
+              ),
+            )
+          else
+            ..._enrolledAgeStats.map((stat) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: _buildAgeActiveRow(stat, grandTotal),
+                )),
+        ],
+      ),
+    );
+  }
+
+Widget _buildEnrolledUsersProgressChart() {
+    final total = _enrolledUsersCount;
+    final compPct = total > 0 ? (_totalEnrolledCompleted / total * 100) : 0.0;
+    final inProgPct = total > 0 ? (_totalEnrolledInProgress / total * 100) : 0.0;
+    final onlyEnrPct = total > 0 ? (_totalEnrolledOnlyEnrolled / total * 100) : 0.0;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 980;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.stacked_bar_chart_rounded, color: Color(0xFF059669), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Stato Avanzamento Utenti Iscritti',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Ripartizione tra Completati, In corso e Solo iscritti con distribuzione di genere',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 16,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
+                  _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
+                  _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
+                  ElevatedButton.icon(
+                    onPressed: (_enrolledUsersCount == 0 || _isExportingEnrolledProgress) ? null : _exportEnrolledProgressToExcel,
+                    icon: _isExportingEnrolledProgress
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16, color: Colors.white),
+                    label: Text(
+                      _isExportingEnrolledProgress ? 'Esportazione...' : 'Esporta Excel',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF16A34A),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    actionsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  actionsWidget,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 20),
+
+          // Macro Barra Avanzamento Generale
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Progressione Complessiva Utenti Iscritti',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                  ),
+                  Text(
+                    'Totale: $total utenti iscritti',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  height: 16,
+                  width: double.infinity,
+                  color: Colors.grey.shade200,
+                  child: total == 0
+                      ? const SizedBox.shrink()
+                      : Row(
+                          children: [
+                            if (_totalEnrolledCompleted > 0)
+                              Expanded(
+                                flex: _totalEnrolledCompleted,
+                                child: Container(color: const Color(0xFF10B981)),
+                              ),
+                            if (_totalEnrolledInProgress > 0)
+                              Expanded(
+                                flex: _totalEnrolledInProgress,
+                                child: Container(color: const Color(0xFFF59E0B)),
+                              ),
+                            if (_totalEnrolledOnlyEnrolled > 0)
+                              Expanded(
+                                flex: _totalEnrolledOnlyEnrolled,
+                                child: Container(color: const Color(0xFF94A3B8)),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Legenda Macro Barra
+              Wrap(
+                spacing: 16,
+                runSpacing: 6,
+                children: [
+                  _buildMacroLegendItem(const Color(0xFF10B981), 'Completati', _totalEnrolledCompleted, compPct),
+                  _buildMacroLegendItem(const Color(0xFFF59E0B), 'In corso', _totalEnrolledInProgress, inProgPct),
+                  _buildMacroLegendItem(const Color(0xFF94A3B8), 'Solo iscritti', _totalEnrolledOnlyEnrolled, onlyEnrPct),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // 3 Cards di dettaglio per stato (Responsive Layout)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 900;
+              final cards = [
+                _buildProgressStatusCard(
+                  title: 'Completati',
+                  subtitle: 'Hanno completato almeno un corso',
+                  total: _totalEnrolledCompleted,
+                  totalCohort: total,
+                  maleCount: _enrolledCompMale,
+                  femaleCount: _enrolledCompFemale,
+                  unclassifiedCount: _enrolledCompUnclass,
+                  syncCount: _enrolledCompSync,
+                  asyncCount: _enrolledCompAsync,
+                  langCounts: _enrolledCompLangCounts,
+                  icon: Icons.check_circle_rounded,
+                  accentColor: const Color(0xFF10B981),
+                  bgColor: const Color(0xFFECFDF5),
+                  borderColor: const Color(0xFFA7F3D0),
+                ),
+                _buildProgressStatusCard(
+                  title: 'In Corso',
+                  subtitle: 'Hanno avviato attività senza completare',
+                  total: _totalEnrolledInProgress,
+                  totalCohort: total,
+                  maleCount: _enrolledInProgMale,
+                  femaleCount: _enrolledInProgFemale,
+                  unclassifiedCount: _enrolledInProgUnclass,
+                  syncCount: _enrolledInProgSync,
+                  asyncCount: _enrolledInProgAsync,
+                  langCounts: _enrolledInProgLangCounts,
+                  icon: Icons.hourglass_bottom_rounded,
+                  accentColor: const Color(0xFFF59E0B),
+                  bgColor: const Color(0xFFFFFBEB),
+                  borderColor: const Color(0xFFFDE68A),
+                ),
+                _buildProgressStatusCard(
+                  title: 'Solo Iscritti',
+                  subtitle: 'Iscritti senza alcuna attività avviata',
+                  total: _totalEnrolledOnlyEnrolled,
+                  totalCohort: total,
+                  maleCount: _enrolledOnlyEnrMale,
+                  femaleCount: _enrolledOnlyEnrFemale,
+                  unclassifiedCount: _enrolledOnlyEnrUnclass,
+                  syncCount: _enrolledOnlyEnrSync,
+                  asyncCount: _enrolledOnlyEnrAsync,
+                  langCounts: _enrolledOnlyEnrLangCounts,
+                  icon: Icons.app_registration_rounded,
+                  accentColor: const Color(0xFF64748B),
+                  bgColor: const Color(0xFFF8FAFC),
+                  borderColor: const Color(0xFFE2E8F0),
+                ),
+              ];
+
+              if (isWide) {
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: cards[0]),
+                      const SizedBox(width: 16),
+                      Expanded(child: cards[1]),
+                      const SizedBox(width: 16),
+                      Expanded(child: cards[2]),
+                    ],
+                  ),
+                );
+              } else {
+                return Column(
+                  children: [
+                    cards[0],
+                    const SizedBox(height: 16),
+                    cards[1],
+                    const SizedBox(height: 16),
+                    cards[2],
+                  ],
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+Widget _buildTotalCourseEnrollmentsEnrolledChart() {
+    final total = _allCourseEnrollmentsTotal;
+    final compPct = total > 0 ? (_allCourseEnrollmentsCompleted / total * 100) : 0.0;
+    final otherPct = total > 0 ? (_allCourseEnrollmentsOther / total * 100) : 0.0;
+    final inProgPct = total > 0 ? (_allCourseEnrollmentsInProgress / total * 100) : 0.0;
+    final onlyEnrPct = total > 0 ? (_allCourseEnrollmentsOnlyEnrolled / total * 100) : 0.0;
+
+    // Determinazione metriche in base al filtro selezionato
+    final int currentTotal;
+    final int currentMale;
+    final int currentFemale;
+    final int currentUnclass;
+    final Map<String, int> currentLangCounts;
+    final Map<String, Map<String, int>> currentGenderLangCounts;
+    final String currentCohortTitle;
+
+    switch (_allCourseEnrollmentFilter) {
+      case 'completed':
+        currentTotal = _allCourseEnrollmentsCompleted;
+        currentMale = _allCourseEnrCompMale;
+        currentFemale = _allCourseEnrCompFemale;
+        currentUnclass = _allCourseEnrCompUnclass;
+        currentLangCounts = _allCourseEnrCompLangCounts;
+        currentGenderLangCounts = _allCourseEnrCompGenderLangCounts;
+        currentCohortTitle = 'Iscrizioni Completate';
+        break;
+      case 'other':
+        currentTotal = _allCourseEnrollmentsOther;
+        currentMale = _allCourseEnrOtherMale;
+        currentFemale = _allCourseEnrOtherFemale;
+        currentUnclass = _allCourseEnrOtherUnclass;
+        currentLangCounts = _allCourseEnrOtherLangCounts;
+        currentGenderLangCounts = _allCourseEnrOtherGenderLangCounts;
+        currentCohortTitle = 'Altri (In corso + Solo iscritti)';
+        break;
+      case 'in_progress':
+        currentTotal = _allCourseEnrollmentsInProgress;
+        currentMale = _allCourseEnrInProgMale;
+        currentFemale = _allCourseEnrInProgFemale;
+        currentUnclass = _allCourseEnrInProgUnclass;
+        currentLangCounts = _allCourseEnrInProgLangCounts;
+        currentGenderLangCounts = _allCourseEnrInProgGenderLangCounts;
+        currentCohortTitle = 'Iscrizioni In Corso';
+        break;
+      case 'only_enrolled':
+        currentTotal = _allCourseEnrollmentsOnlyEnrolled;
+        currentMale = _allCourseEnrOnlyEnrMale;
+        currentFemale = _allCourseEnrOnlyEnrFemale;
+        currentUnclass = _allCourseEnrOnlyEnrUnclass;
+        currentLangCounts = _allCourseEnrOnlyEnrLangCounts;
+        currentGenderLangCounts = _allCourseEnrOnlyEnrGenderLangCounts;
+        currentCohortTitle = 'Solo Iscritti';
+        break;
+      case 'all':
+      default:
+        currentTotal = _allCourseEnrollmentsTotal;
+        currentMale = _allCourseEnrollmentsMale;
+        currentFemale = _allCourseEnrollmentsFemale;
+        currentUnclass = _allCourseEnrollmentsUnclassified;
+        currentLangCounts = _allCourseEnrollmentsLangCounts;
+        currentGenderLangCounts = _allCourseEnrollmentsGenderLangCounts;
+        currentCohortTitle = 'Tutte le Iscrizioni Attive';
+        break;
+    }
+
+    final malePct = currentTotal > 0 ? (currentMale / currentTotal) : 0.0;
+    final femalePct = currentTotal > 0 ? (currentFemale / currentTotal) : 0.0;
+    final unclassPct = currentTotal > 0 ? (currentUnclass / currentTotal) : 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(4),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con Titolo, Sottotitolo e Badge informativi
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 820;
+
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withAlpha(16),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.school_rounded, color: AppTheme.primaryBlue, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'DISTRIBUZIONE TOTALE ISCRIZIONI CORSI (UTENTI ISCRITTI)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.6,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Confronto tra Completati e Altri (In corso + Solo iscritti), con ripartizione per genere e lingua',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final badgesWidget = Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // Badge Totale Iscrizioni Attive
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.people_alt_rounded, size: 14, color: Color(0xFF2563EB)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$total Iscrizioni Attive',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1D4ED8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Badge Completate
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFF86EFAC)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF16A34A)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$_allCourseEnrollmentsCompleted Completate (${compPct.toStringAsFixed(1)}%)',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF15803D),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Badge Altri
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.pending_actions_rounded, size: 14, color: Color(0xFFD97706)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$_allCourseEnrollmentsOther Altri (${otherPct.toStringAsFixed(1)}%)',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFB45309),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Badge Sincrono / Asincrono
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFAF5FF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFE9D5FF)),
+                    ),
+                    child: Text(
+                      'Sync: $_allCourseEnrollmentsSync • Async: $_allCourseEnrollmentsAsync',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF7E22CE),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 12),
+                    badgesWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  badgesWidget,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 18),
+
+          // --- 1. Macro Barra Proporzionale di Avanzamento Iscrizioni ---
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Stato Iscrizioni Attive (Completati vs Altri)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.4,
+                      color: Color(0xFF334155),
+                    ),
+                  ),
+                  Text(
+                    'Totale: $total iscrizioni attive',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  height: 16,
+                  width: double.infinity,
+                  color: Colors.grey.shade200,
+                  child: total == 0
+                      ? const SizedBox.shrink()
+                      : Row(
+                          children: [
+                            if (_allCourseEnrollmentsCompleted > 0)
+                              Expanded(
+                                flex: _allCourseEnrollmentsCompleted,
+                                child: Container(color: const Color(0xFF10B981)),
+                              ),
+                            if (_allCourseEnrollmentsInProgress > 0)
+                              Expanded(
+                                flex: _allCourseEnrollmentsInProgress,
+                                child: Container(color: const Color(0xFFF59E0B)),
+                              ),
+                            if (_allCourseEnrollmentsOnlyEnrolled > 0)
+                              Expanded(
+                                flex: _allCourseEnrollmentsOnlyEnrolled,
+                                child: Container(color: const Color(0xFF94A3B8)),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 16,
+                runSpacing: 6,
+                children: [
+                  _buildMacroLegendItem(const Color(0xFF10B981), 'Completati', _allCourseEnrollmentsCompleted, compPct),
+                  _buildMacroLegendItem(const Color(0xFFF59E0B), 'In corso', _allCourseEnrollmentsInProgress, inProgPct),
+                  _buildMacroLegendItem(const Color(0xFF94A3B8), 'Solo iscritti', _allCourseEnrollmentsOnlyEnrolled, onlyEnrPct),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // --- 2. Due Card Comparative Affiancate: Completati vs Altri (In corso + Solo iscritti) ---
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 860;
+              final completedCard = _buildCohortSummaryCard(
+                title: 'Iscrizioni Completate',
+                subtitle: 'Corsi completati con successo dagli utenti iscritti',
+                count: _allCourseEnrollmentsCompleted,
+                totalCohort: total,
+                maleCount: _allCourseEnrCompMale,
+                femaleCount: _allCourseEnrCompFemale,
+                unclassifiedCount: _allCourseEnrCompUnclass,
+                langCounts: _allCourseEnrCompLangCounts,
+                genderLangCounts: _allCourseEnrCompGenderLangCounts,
+                accentColor: const Color(0xFF10B981),
+                bgColor: const Color(0xFFF0FDF4),
+                borderColor: const Color(0xFFA7F3D0),
+                icon: Icons.check_circle_rounded,
+              );
+
+              final otherCard = _buildCohortSummaryCard(
+                title: 'Altre Iscrizioni (Non Completate)',
+                subtitle: 'In corso: $_allCourseEnrollmentsInProgress (${inProgPct.toStringAsFixed(1)}%) • Solo iscritti: $_allCourseEnrollmentsOnlyEnrolled (${onlyEnrPct.toStringAsFixed(1)}%)',
+                count: _allCourseEnrollmentsOther,
+                totalCohort: total,
+                maleCount: _allCourseEnrOtherMale,
+                femaleCount: _allCourseEnrOtherFemale,
+                unclassifiedCount: _allCourseEnrOtherUnclass,
+                langCounts: _allCourseEnrOtherLangCounts,
+                genderLangCounts: _allCourseEnrOtherGenderLangCounts,
+                accentColor: const Color(0xFFD97706),
+                bgColor: const Color(0xFFFFFBEB),
+                borderColor: const Color(0xFFFDE68A),
+                icon: Icons.pending_actions_rounded,
+              );
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: completedCard),
+                    const SizedBox(width: 16),
+                    Expanded(child: otherCard),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  completedCard,
+                  const SizedBox(height: 14),
+                  otherCard,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 22),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 16),
+
+          // --- 3. Barra Selettore Filtro Dinamico Donut & Lingue ---
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'ESPLORA DETTAGLIO COORTE:',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              Text(
+                'Visualizzazione: $currentCohortTitle',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryBlue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildEnrolledEnrollmentChoiceChip('all', 'Tutte ($total)'),
+              _buildEnrolledEnrollmentChoiceChip('completed', 'Completati ($_allCourseEnrollmentsCompleted)'),
+              _buildEnrolledEnrollmentChoiceChip('other', 'Altri ($_allCourseEnrollmentsOther)'),
+              _buildEnrolledEnrollmentChoiceChip('in_progress', 'Di cui In corso ($_allCourseEnrollmentsInProgress)'),
+              _buildEnrolledEnrollmentChoiceChip('only_enrolled', 'Di cui Solo iscritti ($_allCourseEnrollmentsOnlyEnrolled)'),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          // --- 4. Donut Chart + Breakdown Genere della Coorte Selezionata ---
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 660;
+
+              final donutWidget = Center(
+                child: SizedBox(
+                  width: 190,
+                  height: 190,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(
+                        size: const Size(190, 190),
+                        painter: _GenderDonutPainter(
+                          male: currentMale,
+                          female: currentFemale,
+                          unclassified: currentUnclass,
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$currentTotal',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Iscrizioni',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+
+              final breakdownWidget = Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildGenderBar(
+                    label: 'Iscrizioni Uomini (M)',
+                    count: currentMale,
+                    percentage: malePct,
+                    color: const Color(0xFF2563EB),
+                    bgColor: const Color(0xFFEFF6FF),
+                    icon: Icons.male_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGenderBar(
+                    label: 'Iscrizioni Donne (F)',
+                    count: currentFemale,
+                    percentage: femalePct,
+                    color: const Color(0xFFE11D48),
+                    bgColor: const Color(0xFFFFF1F2),
+                    icon: Icons.female_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGenderBar(
+                    label: 'Iscrizioni Non classificate',
+                    count: currentUnclass,
+                    percentage: unclassPct,
+                    color: const Color(0xFF64748B),
+                    bgColor: const Color(0xFFF8FAFC),
+                    icon: Icons.help_outline_rounded,
+                  ),
+                ],
+              );
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 16),
+                    donutWidget,
+                    const SizedBox(width: 36),
+                    Expanded(child: breakdownWidget),
+                    const SizedBox(width: 16),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  donutWidget,
+                  const SizedBox(height: 24),
+                  breakdownWidget,
+                ],
+              );
+            },
+          ),
+
+          // --- 5. Sezione Lingua Iscrizioni per la Coorte Selezionata ---
+          _buildTotalCourseEnrollmentsActiveLanguageSection(
+            total: currentTotal,
+            langCounts: currentLangCounts,
+            genderLangCounts: currentGenderLangCounts,
+            cohortName: currentCohortTitle,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnrolledEnrollmentChoiceChip(String key, String label) {
+    final isSelected = _allCourseEnrollmentFilter == key;
+    return ChoiceChip(
+      selected: isSelected,
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          color: isSelected ? Colors.white : const Color(0xFF334155),
+        ),
+      ),
+      selectedColor: AppTheme.primaryBlue,
+      backgroundColor: const Color(0xFFF8FAFC),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: isSelected ? AppTheme.primaryBlue : Colors.grey.shade300,
+        ),
+      ),
+      onSelected: (_) {
+        setState(() {
+          _allCourseEnrollmentFilter = key;
+        });
+      },
+    );
+  }
+
+
+Widget _buildEnrolledCourseEnrollmentGenderChart() {
+    final displayedCourses = _showAllEnrolledCourses
+        ? _enrolledCourseStats
+        : _enrolledCourseStats.take(8).toList();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card con titolo e legenda
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 980;
+              final titleWidget = Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.bar_chart_rounded, color: AppTheme.primaryBlue, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Distribuzione Iscrizioni per Corso (Utenti Iscritti)',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Ripartizione degli utenti iscritti per corso e composizione di genere',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              final actionsWidget = Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildCourseLegendItem(const Color(0xFF2563EB), 'M (Maschile)'),
+                  _buildCourseLegendItem(const Color(0xFFE11D48), 'F (Femminile)'),
+                  _buildCourseLegendItem(const Color(0xFF64748B), 'N.C. (Non class.)'),
+                  const SizedBox(width: 4),
+                  OutlinedButton.icon(
+                    onPressed: (_enrolledCourseStats.isEmpty || _isExportingEnrolledCourses) ? null : _exportEnrolledCoursesToExcel,
+                    icon: _isExportingEnrolledCourses
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
+                          )
+                        : const Icon(Icons.table_view_rounded, size: 16),
+                    label: Text(
+                      _isExportingEnrolledCourses ? 'Esportazione...' : 'Esporta Excel',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF16A34A),
+                      side: const BorderSide(color: Color(0xFF86EFAC)),
+                      backgroundColor: const Color(0xFFF0FDF4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titleWidget,
+                    const SizedBox(height: 14),
+                    actionsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: titleWidget),
+                  const SizedBox(width: 16),
+                  actionsWidget,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 20),
+
+          if (_enrolledCourseStats.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 36),
+                child: Column(
+                  children: [
+                    Icon(Icons.school_outlined, size: 40, color: Colors.grey.shade400),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Nessun dato di iscrizione attivo per i corsi sincronizzati',
+                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else ...[
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: displayedCourses.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 18),
+              itemBuilder: (context, index) {
+                final course = displayedCourses[index];
+                return _buildCourseEnrollmentRow(index + 1, course);
+              },
+            ),
+            if (_enrolledCourseStats.length > 8) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _showAllEnrolledCourses = !_showAllEnrolledCourses;
+                    });
+                  },
+                  icon: Icon(
+                    _showAllEnrolledCourses ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    _showAllEnrolledCourses
+                        ? 'Mostra solo i principali 8 corsi'
+                        : 'Mostra tutti i ${_enrolledCourseStats.length} corsi',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryBlue,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+
 
 
 
